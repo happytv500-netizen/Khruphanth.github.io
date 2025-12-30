@@ -10,15 +10,11 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         :root { --navy: #002147; --light-gray: #f8f9fa; }
-        body { 
-            background-color: #f4f6f9; 
-            font-family: 'Sarabun', sans-serif; /* ใช้ฟอนต์ Sarabun */
-        }
+        body { background-color: #f4f6f9; font-family: 'Sarabun', sans-serif; }
         .navbar-navy { background-color: var(--navy) !important; }
         .sidebar-link { cursor: pointer; border: none; transition: 0.2s; font-weight: 500; }
         .sidebar-link:hover { background-color: #e9ecef; padding-left: 2rem; color: var(--navy); }
         .card-main { min-height: 85vh; border-radius: 15px; }
-        /* ปรับแต่ง Table Header ให้ดูเป็นทางการ */
         .table thead { background-color: var(--navy); color: white; }
     </style>
 </head>
@@ -31,8 +27,8 @@
             </button>
             <a class="navbar-brand fw-bold" href="#" onclick="loadPage('dash')">ระบบจัดการครุภัณฑ์</a>
             <div class="ms-auto d-flex align-items-center text-white">
-                <span id="username" class="me-3 d-none d-sm-block"><i class="bi bi-person-circle"></i> ยินดีต้อนรับ, Admin</span>
-                <button onclick="location.reload()" class="btn btn-sm btn-outline-light rounded-pill px-3">ออกจากระบบ</button>
+                <span id="username" class="me-3 d-none d-sm-block"><i class="bi bi-person-circle"></i> ยินดีต้อนรับ...</span>
+                <button onclick="logout()" class="btn btn-sm btn-outline-light rounded-pill px-3">ออกจากระบบ</button>
             </div>
         </div>
     </nav>
