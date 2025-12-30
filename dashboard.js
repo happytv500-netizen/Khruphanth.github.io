@@ -84,7 +84,7 @@ function formatDateCell(val) {
 const getSelectedRows = () => Array.from(document.querySelectorAll(".row-checkbox:checked")).map(cb => cb.closest("tr"));
 
 // ============================================================
-// 3. AUTH LOGIC (ตรวจสอบชื่อจาก Name)
+// 3. AUTH LOGIC
 // ============================================================
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -190,8 +190,32 @@ function renderManual() {
     document.getElementById("page-content").innerHTML = `<div class="card p-4 border-0 shadow-sm"><h6>ขั้นตอนการใช้งานหลัก:</h6><ul><li><b>ตรวจสอบครุภัณฑ์:</b> ยืนยันรายการที่ส่งมาจากระบบ</li><li><b>ฐานข้อมูล:</b> เพิ่มหรือแก้ไขข้อมูลครุภัณฑ์หลัก</li><li><b>ออกรายงาน:</b> ดาวน์โหลดสรุปผลเป็น PDF หรือ Word</li></ul></div>`;
 }
 
+async function renderFilteredStatus(statusName) {
+    document.getElementById("page-title").textContent = `รายการครุภัณฑ์: ${statusName}`;
+    const data = await fetchJSON(URLS.SHOW);
+    const filtered = (data || []).filter(r => String(r["สถานะ"]).includes(statusName));
+    const rows = filtered.map((r, i) => `<tr><td class="text-center">${i + 1}</td><td class="fw-bold">${r["รหัสครุภัณฑ์"] || ""}</td><td>${r["ชื่อครุภัณฑ์"] || ""}</td><td>${r["ที่เก็บ"] || "-"}</td><td><span class="badge bg-navy">${r["สถานะ"] || ""}</span></td></tr>`).join("");
+    document.getElementById("page-content").innerHTML = `<div class="mb-3"><button class="btn btn-secondary btn-sm" onclick="window.loadPage('dash')">กลับหน้าหลัก</button></div><div class="table-responsive border"><table class="table table-hover bg-white mb-0"><thead class="table-dark"><tr><th>#</th><th>รหัส</th><th>ชื่อ</th><th>ที่เก็บ</th><th>สถานะ</th></tr></thead><tbody>${filtered.length > 0 ? rows : '<tr><td colspan="5" class="text-center">ไม่พบข้อมูล</td></tr>'}</tbody></table></div>`;
+}
+
+async function renderHistory(id = "") {
+    document.getElementById("page-title").textContent = "📜 สืบค้นประวัติย้อนหลัง";
+    document.getElementById("page-content").innerHTML = `<div class="card border-0 shadow-sm mb-4"><div class="card-body d-flex gap-2"><input type="text" id="h-input" class="form-control" placeholder="รหัสครุภัณฑ์..." value="${id || ''}"><button class="btn btn-primary" onclick="window.loadPage('history', document.getElementById('h-input').value)">สืบค้น</button></div></div><div id="h-result"></div>`;
+    if(!id) return;
+    const data = await fetchJSON(URLS.LOG); 
+    const logs = (data || []).filter(r => String(r["รหัส"]) === String(id));
+    document.getElementById("h-result").innerHTML = logs.length === 0 ? `<div class="alert alert-warning text-center">ไม่พบประวัติ</div>` : `<div class="table-responsive border"><table class="table table-bordered bg-white mb-0"><thead class="table-dark"><tr><th>วันที่</th><th>ที่เก็บ</th><th>สถานะ</th><th>หมายเหตุ</th></tr></thead><tbody>${logs.map(r => `<tr><td>${formatDateCell(r["วันที่"])}</td><td>${r["ที่อยู่"]}</td><td>${r["สถานะ"]}</td><td>${r["หมายเหตุ"] || "-"}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+async function renderReport() {
+    document.getElementById("page-title").textContent = "📄 ออกรายงานเอกสาร";
+    const data = await fetchJSON(URLS.SHOW);
+    const rows = (data || []).map(r => `<tr><td>${r["รหัสครุภัณฑ์"]||""}</td><td>${r["ชื่อครุภัณฑ์"]||""}</td><td>${r["ที่เก็บ"]||""}</td><td>${r["สถานะ"]||""}</td></tr>`).join("");
+    document.getElementById("page-content").innerHTML = `<div class="mb-3 text-end"><button class="btn btn-success btn-sm" onclick="genReport('pdf')">โหลด PDF</button> <button class="btn btn-primary btn-sm" onclick="genReport('doc')">โหลด Word</button></div><div class="table-responsive border"><table class="table table-bordered bg-white mb-0"><thead class="table-success"><tr><th>รหัส</th><th>ชื่อ</th><th>ที่เก็บ</th><th>สภาพ</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
 // ============================================================
-// 5. ACTION LOGIC (CRUD)
+// 5. ACTION LOGIC
 // ============================================================
 
 window.confirmWait = async (btn) => {
@@ -206,7 +230,7 @@ window.confirmWait = async (btn) => {
 };
 
 window.deleteRow = async (sheet, btn) => {
-    const conf = await Swal.fire({ title: 'ยืนยันการลบ?', text: "ข้อมูลจะหายไปถาวร!", icon: 'warning', showCancelButton: true });
+    const conf = await Swal.fire({ title: 'ยืนยันการลบ?', icon: 'warning', showCancelButton: true });
     if(conf.isConfirmed) {
         showLoading("กำลังลบ...");
         await postAction(sheet, "delete", { row: btn.closest("tr").dataset.row });
@@ -215,21 +239,23 @@ window.deleteRow = async (sheet, btn) => {
 };
 
 window.addUser = async () => {
-    const { value: f } = await Swal.fire({ title: 'เพิ่มสมาชิกใหม่', html: `<input id="u-i" class="form-control mb-2" placeholder="ID"><input id="u-p" class="form-control mb-2" placeholder="Password"><input id="u-n" class="form-control mb-2" placeholder="ชื่อ"><select id="u-s" class="form-select"><option value="employee">Employee</option><option value="admin">Admin</option></select>`, preConfirm: () => ({ id: document.getElementById('u-i').value, pass: document.getElementById('u-p').value, name: document.getElementById('u-n').value, status: document.getElementById('u-s').value })});
+    const { value: f } = await Swal.fire({ title: 'เพิ่มสมาชิก', html: `<input id="u-i" class="form-control mb-2" placeholder="ID"><input id="u-p" class="form-control mb-2" placeholder="Pass"><input id="u-n" class="form-control mb-2" placeholder="ชื่อ"><select id="u-s" class="form-select"><option value="employee">Employee</option><option value="admin">Admin</option></select>`, preConfirm: () => ({ id: document.getElementById('u-i').value, pass: document.getElementById('u-p').value, name: document.getElementById('u-n').value, status: document.getElementById('u-s').value })});
     if (f && f.id) { await postAction("LOGIN", "addUser", f); window.loadPage('user'); }
 };
 
 window.openDynamicAddForm = async function() {
-    const { value: f } = await Swal.fire({ title: 'เพิ่มครุภัณฑ์', html: `<input id="sw-c" class="form-control mb-2" placeholder="รหัสครุภัณฑ์"><input id="sw-n" class="form-control" placeholder="ชื่อครุภัณฑ์">`, preConfirm: () => ({ code: document.getElementById('sw-c').value, name: document.getElementById('sw-n').value })});
-    if (f && f.code) { showLoading("กำลังบันทึก..."); await postAction("DATA", "add", f); window.loadPage('list'); }
+    const { value: f } = await Swal.fire({ title: 'เพิ่มครุภัณฑ์', html: `<input id="sw-c" class="form-control mb-2" placeholder="รหัส"><input id="sw-n" class="form-control" placeholder="ชื่อ">`, preConfirm: () => ({ code: document.getElementById('sw-c').value, name: document.getElementById('sw-n').value })});
+    if (f && f.code) { showLoading(); await postAction("DATA", "add", f); window.loadPage('list'); }
 };
 
-// --- ตรวจสอบสถานะจริง ---
+window.genReport = async (fmt) => {
+    showLoading("กำลังสร้างรายงาน...");
+    const res = await postAction("SHOW", "generateReport", { format: fmt });
+    if (res && res.fileData) { downloadFile(res.fileData, res.fileName); Swal.fire("สำเร็จ", "โหลดแล้ว", "success"); window.loadPage('report'); }
+};
+
 window.checkWebStatus = async function() {
     const start = Date.now();
     const test = await fetchJSON(URLS.DATA);
-    const latency = Date.now() - start;
-    Swal.fire({ title: 'Status', html: `Database: Connected<br>Latency: ${latency}ms`, icon: test ? 'success' : 'error' });
+    Swal.fire({ title: 'Status', html: `Database: Connected<br>Latency: ${Date.now() - start}ms`, icon: test ? 'success' : 'error' });
 };
-
-// ฟังก์ชันอื่นๆ (renderHistory, renderReport, renderFilteredStatus) จะทำงานตามโครงสร้างข้างต้น
