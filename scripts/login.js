@@ -1,58 +1,65 @@
-// --- ดึงข้อมูล login ---
+// --- 1. ตั้งค่าการเชื่อมต่อ Google Sheet ---
+const sheetID = "1bkpz-iG4B8qnvZc4ql4qE15Qw8HrIZ1aeX1vZQzMFy0";
+const sheetName = "LOGIN";
+const baseURL = `https://docs.google.com/spreadsheets/d/${sheetID}/gviz/tq?tqx=out:json&sheet=${sheetName}&t=${Date.now()}`;
+
+// --- 2. อ้างอิง Element จาก HTML ---
+const loginForm = document.getElementById("loginForm");
+const errorMessage = document.getElementById("error-message");
+
+// --- 3. ฟังก์ชันดึงข้อมูลจาก Google Sheet ---
 async function getLoginData() {
-  try {
-    const res = await fetch(baseURL);
-    const text = await res.text();
-    const json = JSON.parse(text.substring(47).slice(0,-2));
+    try {
+        const res = await fetch(baseURL);
+        const text = await res.text();
+        
+        // ตัดข้อความส่วนเกินจาก JSON ของ Google
+        const json = JSON.parse(text.substring(47).slice(0, -2));
 
-    // เพิ่มการดึงคอลัมน์ D (index 3) คือ Name
-    const data = json.table.rows.map(r => ({
-      ID: r.c[0]?.v?.toString().trim(),           // A = ID
-      Pass: r.c[1]?.v?.toString().trim(),         // B = Pass
-      Status: r.c[2]?.v?.toString().trim().toLowerCase(), // C = Status
-      Name: r.c[3]?.v?.toString().trim()          // D = Name (ต้องมีบรรทัดนี้)
-    }));
+        // แปลงข้อมูลแถวใน Sheet ให้เป็น Object
+        return json.table.rows.map(r => ({
+            ID: r.c[0]?.v?.toString().trim(),           // คอลัมน์ A
+            Pass: r.c[1]?.v?.toString().trim(),         // คอลัมน์ B
+            Status: r.c[2]?.v?.toString().trim().toLowerCase(), // คอลัมน์ C
+            Name: r.c[3]?.v?.toString().trim()          // คอลัมน์ D (ชื่อจริง)
+        }));
 
-    console.log("Login Data จาก Google Sheet:", data);
-    return data;
-
-  } catch (err) {
-    console.error("โหลดข้อมูล login ไม่สำเร็จ:", err);
-    errorMessage.textContent = "ไม่สามารถโหลดข้อมูลผู้ใช้ได้ กรุณาลองใหม่";
-    return [];
-  }
+    } catch (err) {
+        console.error("โหลดข้อมูลไม่สำเร็จ:", err);
+        if (errorMessage) errorMessage.textContent = "ไม่สามารถเชื่อมต่อฐานข้อมูลได้";
+        return [];
+    }
 }
 
-// --- ตรวจสอบ login ---
-loginForm.addEventListener("submit", async function(e){
-  e.preventDefault();
-  errorMessage.textContent = "";
+// --- 4. ระบบตรวจสอบการ Login ---
+loginForm.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    
+    if (errorMessage) errorMessage.textContent = "กำลังตรวจสอบ...";
 
-  const usernameInput = document.getElementById("username").value.trim().toLowerCase();
-  const passwordInput = document.getElementById("password").value.trim().toLowerCase();
+    const usernameInput = document.getElementById("username").value.trim().toLowerCase();
+    const passwordInput = document.getElementById("password").value.trim().toLowerCase();
 
-  const loginData = await getLoginData();
-  if(loginData.length === 0) return;
+    const loginData = await getLoginData();
+    if (loginData.length === 0) return;
 
-  // หา user
-  const user = loginData.find(u => 
-    u.ID?.toLowerCase() === usernameInput &&
-    u.Pass?.toLowerCase() === passwordInput
-  );
+    // ค้นหา User ที่ระบุ
+    const user = loginData.find(u => 
+        u.ID?.toLowerCase() === usernameInput && 
+        u.Pass?.toLowerCase() === passwordInput
+    );
 
-  if(user){
-    // บันทึกข้อมูล user (ที่มี Name แล้ว) ลงใน localStorage
-    localStorage.setItem("loginUser", JSON.stringify(user));
+    if (user) {
+        // บันทึกข้อมูลลงเครื่อง (Dashboard จะมาดึงค่า Name จากตรงนี้ไปโชว์)
+        localStorage.setItem("loginUser", JSON.stringify(user));
 
-    // เปลี่ยนหน้าตามสิทธิ์ (ตรวจสอบชื่อไฟล์ html ของคุณให้ถูกต้อง)
-    if(user.Status === "admin"){
-      window.location.href = "adminDashboard.html"; 
-    } else if(user.Status === "employee"){
-      window.location.href = "userDashboard.html"; 
+        // นำทางไปยังหน้า Dashboard ตามสิทธิ์ (เช็คชื่อไฟล์ให้ตรงกับที่คุณมี)
+        if (user.Status === "admin") {
+            window.location.href = "adminDashboard.html"; 
+        } else {
+            window.location.href = "userDashboard.html"; 
+        }
     } else {
-      errorMessage.textContent = "สิทธิ์ผู้ใช้งานไม่ถูกต้อง";
+        if (errorMessage) errorMessage.textContent = "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง";
     }
-  } else {
-    errorMessage.textContent = "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง";
-  }
 });
