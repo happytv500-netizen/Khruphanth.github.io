@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import { fetchSheetData, postAction } from '../../services/api';
-import { formatDate } from '../../utils/formatter';
-import { SHEET_NAMES } from '../../config/config';
+import { fetchSheetData, postAction } from '../services/api';
+import { formatDate } from '../utils/formatter';
+import { SHEET_NAMES } from '../config/config';
 
 const WaitTable = () => {
   const [data, setData] = useState([]);
@@ -15,14 +15,16 @@ const WaitTable = () => {
     setLoading(true);
     try {
       const rows = await fetchSheetData(SHEET_NAMES.WAIT || "WAIT");
+      // Map: [0:Code, 1:Name, 2:Location, 3:Status, 4:Note, 5:Date, 6:Time]
       const mapped = rows.map((r, i) => ({
         row: i + 2,
-        code: r[0], name: r[1],
-        location: "-", // ค่าเริ่มต้นบังคับเลือก
-        status: "-",   // ค่าเริ่มต้นบังคับเลือก
+        code: r[0], 
+        name: r[1],
+        location: "-", // บังคับเริ่มเป็น -
+        status: "-",   // บังคับเริ่มเป็น -
         note: r[4] || "", 
         date: r[5], 
-        time: r[6] // แสดงเวลาตามที่ Sheet ส่งมาเลย
+        time: r[6] // เวลา
       }));
       setData(mapped);
     } catch (e) {
@@ -68,14 +70,12 @@ const WaitTable = () => {
     }
   };
 
-  // ฟังก์ชันแสดงเวลา (แสดงตามข้อมูลดิบ ถ้ามีค่า)
   const renderTime = (val) => {
     if (!val) return "-";
-    // ถ้าเป็น Date object ให้แปลง ถ้าเป็น string ให้โชว์เลย
-    if (val instanceof Date) {
-        return val.toLocaleTimeString('th-TH', {hour: '2-digit', minute:'2-digit'});
-    }
-    return val; 
+    if (val instanceof Date) return val.toLocaleTimeString('th-TH', {hour: '2-digit', minute:'2-digit'});
+    // กรณีเป็น String เช่น "14:30:00"
+    if(String(val).includes(":")) return String(val).substring(0, 5);
+    return val;
   };
 
   return (

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import { fetchSheetData, postAction } from '../../services/api';
-import { SHEET_NAMES } from '../../config/config';
-import { formatDate, getStatusBadgeClass } from '../../utils/formatter';
+import { fetchSheetData, postAction } from '../services/api';
+import { SHEET_NAMES } from '../config/config';
+import { formatDate, getStatusBadgeClass } from '../utils/formatter';
 
 const InventoryTable = () => {
   const [data, setData] = useState([]);
@@ -17,12 +17,11 @@ const InventoryTable = () => {
   const [historyLogs, setHistoryLogs] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  // โหลดข้อมูล
   const loadList = async () => {
     setLoading(true);
     try {
       const rows = await fetchSheetData(SHEET_NAMES.DATA || "DATA");
-      // Map: [0:Code, 1:Name, 2:Location, 3:Status, 4:Detail]
+      // Map DATA: [0:Code, 1:Name, 2:Location, 3:Status, 4:Detail]
       const mapped = rows.map((r, i) => ({ 
         row: i + 2, 
         code: r[0], 
@@ -40,7 +39,6 @@ const InventoryTable = () => {
 
   // --- Actions ---
 
-  // 1. เพิ่มรายการ (ส่ง Location/Status เป็นค่า Default)
   const handleAddItem = async (e) => {
     e.preventDefault();
     setShowAddModal(false);
@@ -49,8 +47,8 @@ const InventoryTable = () => {
     await postAction("DATA", "add", {
         "รหัส": currentItem.code,
         "ชื่อ": currentItem.name,
-        "ที่อยู่": "-",       // Default
-        "สถานะ": "ใช้งานได้", // Default
+        "ที่อยู่": "-",       // ค่าเริ่มต้น
+        "สถานะ": "ใช้งานได้", // ค่าเริ่มต้น
         "รายละเอียด": currentItem.detail || "-"
     });
 
@@ -58,7 +56,6 @@ const InventoryTable = () => {
     loadList();
   };
 
-  // 2. บันทึกแก้ไข (ส่ง Location/Status เดิมกลับไป เพื่อไม่ให้หาย)
   const handleEditSave = async () => {
     setShowEditModal(false);
     Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
@@ -67,8 +64,8 @@ const InventoryTable = () => {
         row: currentItem.row,
         "รหัส": currentItem.code,
         "ชื่อ": currentItem.name,
-        "ที่อยู่": currentItem.location, // ใช้ค่าเดิม
-        "สถานะ": currentItem.status,     // ใช้ค่าเดิม
+        "ที่อยู่": currentItem.location, // ส่งค่าเดิมกลับไป
+        "สถานะ": currentItem.status,     // ส่งค่าเดิมกลับไป
         "รายละเอียด": currentItem.detail
     });
 
@@ -86,7 +83,6 @@ const InventoryTable = () => {
     }
   };
 
-  // 3. ปุ่มประวัติ
   const openHistory = async (item) => {
     setCurrentItem(item);
     setShowHistoryModal(true);
@@ -94,7 +90,6 @@ const InventoryTable = () => {
     
     try {
         const rows = await fetchSheetData(SHEET_NAMES.LOG || "LOG");
-        // กรองหาประวัติของ Code นี้
         const logs = rows.filter(r => String(r[0]) === String(item.code));
         setHistoryLogs(logs);
     } catch (e) {
@@ -103,17 +98,14 @@ const InventoryTable = () => {
     setHistoryLoading(false);
   };
 
-  // 4. โหลดรูป (แก้ให้พยายามโหลดเองก่อน ถ้าไม่ได้ค่อย new tab)
   const downloadImg = async (url, filename) => {
     try {
         Swal.fire({
             title: 'กำลังดาวน์โหลด...', 
-            text: 'กรุณารอสักครู่',
             timer: 2000, 
             showConfirmButton: false, 
             didOpen: () => Swal.showLoading()
         });
-        
         const response = await fetch(url);
         const blob = await response.blob();
         const link = document.createElement("a");
@@ -123,7 +115,6 @@ const InventoryTable = () => {
         link.click();
         document.body.removeChild(link);
     } catch (error) {
-        // ถ้า Browser บล็อก (CORS) ให้เปิด Tab ใหม่แทน
         window.open(url, '_blank');
     }
   };
@@ -138,7 +129,7 @@ const InventoryTable = () => {
         </div>
       </div>
       <div className="table-responsive p-3">
-        <table className="table table-hover align-middle table-custom">
+        <table className="table table-hover align-middle">
           <thead className="table-light">
             <tr>
               <th>เลือก</th>
@@ -159,22 +150,17 @@ const InventoryTable = () => {
                   <td><input type="checkbox" className="form-check-input"/></td>
                   <td className="fw-bold">{item.code}</td>
                   <td>{item.name}</td>
-                  <td className="text-center">
-                    <div className="img-container" onClick={() => downloadImg(bc, `bc-${item.code}.gif`)}>
-                        <img src={bc} height="30" alt="barcode" style={{cursor: 'pointer'}} />
-                        <div className="small text-muted" style={{fontSize: '10px'}}>คลิกเพื่อโหลด</div>
-                    </div>
+                  <td className="text-center" onClick={() => downloadImg(bc, `bc-${item.code}.gif`)}>
+                    <img src={bc} height="30" alt="barcode" style={{cursor: 'pointer'}} />
                   </td>
-                  <td className="text-center">
-                    <div className="img-container" onClick={() => downloadImg(qr, `qr-${item.code}.png`)}>
-                        <img src={qr} height="40" alt="qr" style={{cursor: 'pointer'}} />
-                    </div>
+                  <td className="text-center" onClick={() => downloadImg(qr, `qr-${item.code}.png`)}>
+                    <img src={qr} height="40" alt="qr" style={{cursor: 'pointer'}} />
                   </td>
                   <td className="text-center">
                     <div className="d-flex justify-content-center gap-1">
                         <button className="btn btn-warning btn-sm text-dark" onClick={() => { setCurrentItem(item); setShowEditModal(true); }}><i className="bi bi-pencil-square"></i></button>
                         <button className="btn btn-danger btn-sm" onClick={() => handleDelete(item.row)}><i className="bi bi-trash"></i></button>
-                        <button className="btn btn-info btn-sm text-white" onClick={() => openHistory(item)}><i className="bi bi-file-text"></i></button>
+                        <button className="btn btn-info btn-sm text-white" onClick={() => openHistory(item)}><i className="bi bi-search"></i></button>
                     </div>
                   </td>
                 </tr>
@@ -184,7 +170,7 @@ const InventoryTable = () => {
         </table>
       </div>
 
-      {/* --- ADD MODAL (เหลือแค่ รหัส/ชื่อ/รายละเอียด) --- */}
+      {/* ADD MODAL */}
       {showAddModal && (
         <div className="modal fade show d-block" style={{background: 'rgba(0,0,0,0.5)'}}>
             <div className="modal-dialog modal-dialog-centered">
@@ -192,18 +178,10 @@ const InventoryTable = () => {
                     <div className="modal-header"><h5 className="modal-title">เพิ่มครุภัณฑ์ใหม่</h5></div>
                     <form onSubmit={handleAddItem}>
                         <div className="modal-body">
-                            <div className="mb-3">
-                                <label className="form-label">รหัสครุภัณฑ์</label>
-                                <input required className="form-control" onChange={e=>setCurrentItem({...currentItem, code: e.target.value})}/>
-                            </div>
-                            <div className="mb-3">
-                                <label className="form-label">ชื่อครุภัณฑ์</label>
-                                <input required className="form-control" onChange={e=>setCurrentItem({...currentItem, name: e.target.value})}/>
-                            </div>
-                            <div className="mb-3">
-                                <label className="form-label">รายละเอียดเพิ่มเติม</label>
-                                <textarea className="form-control" rows="3" onChange={e=>setCurrentItem({...currentItem, detail: e.target.value})}></textarea>
-                            </div>
+                            <div className="mb-3"><label>รหัสครุภัณฑ์</label><input required className="form-control" onChange={e=>setCurrentItem({...currentItem, code: e.target.value})}/></div>
+                            <div className="mb-3"><label>ชื่อครุภัณฑ์</label><input required className="form-control" onChange={e=>setCurrentItem({...currentItem, name: e.target.value})}/></div>
+                            <div className="mb-3"><label>รายละเอียด</label><textarea className="form-control" onChange={e=>setCurrentItem({...currentItem, detail: e.target.value})}></textarea></div>
+                            <div className="text-muted small">*ที่อยู่และสถานะจะถูกตั้งค่าเริ่มต้นอัตโนมัติ</div>
                         </div>
                         <div className="modal-footer">
                             <button type="button" className="btn btn-secondary" onClick={()=>setShowAddModal(false)}>ปิด</button>
@@ -215,48 +193,37 @@ const InventoryTable = () => {
         </div>
       )}
 
-      {/* --- EDIT MODAL (เหลือแค่ รหัส/ชื่อ/รายละเอียด) --- */}
+      {/* EDIT MODAL */}
       {showEditModal && (
         <div className="modal fade show d-block" style={{background: 'rgba(0,0,0,0.5)'}}>
             <div className="modal-dialog modal-dialog-centered">
                 <div className="modal-content">
                     <div className="modal-header"><h5 className="modal-title">แก้ไขข้อมูล</h5></div>
                     <div className="modal-body">
-                         <div className="mb-3">
-                            <label className="form-label">รหัสครุภัณฑ์</label>
-                            <input className="form-control" value={currentItem.code} onChange={e=>setCurrentItem({...currentItem, code: e.target.value})}/>
-                        </div>
-                        <div className="mb-3">
-                            <label className="form-label">ชื่อครุภัณฑ์</label>
-                            <input className="form-control" value={currentItem.name} onChange={e=>setCurrentItem({...currentItem, name: e.target.value})}/>
-                        </div>
-                        <div className="mb-3">
-                            <label className="form-label">รายละเอียดเพิ่มเติม</label>
-                            <textarea className="form-control" rows="3" value={currentItem.detail || ''} onChange={e=>setCurrentItem({...currentItem, detail: e.target.value})}></textarea>
-                        </div>
+                        <div className="mb-3"><label>รหัสครุภัณฑ์</label><input className="form-control" value={currentItem.code} onChange={e=>setCurrentItem({...currentItem, code: e.target.value})}/></div>
+                        <div className="mb-3"><label>ชื่อครุภัณฑ์</label><input className="form-control" value={currentItem.name} onChange={e=>setCurrentItem({...currentItem, name: e.target.value})}/></div>
+                        <div className="mb-3"><label>รายละเอียด</label><textarea className="form-control" value={currentItem.detail || ''} onChange={e=>setCurrentItem({...currentItem, detail: e.target.value})}></textarea></div>
                     </div>
                     <div className="modal-footer">
                         <button className="btn btn-secondary" onClick={()=>setShowEditModal(false)}>ปิด</button>
-                        <button className="btn btn-primary" onClick={handleEditSave}>บันทึกการแก้ไข</button>
+                        <button className="btn btn-primary" onClick={handleEditSave}>บันทึก</button>
                     </div>
                 </div>
             </div>
         </div>
       )}
 
-      {/* --- HISTORY MODAL --- */}
+      {/* HISTORY MODAL */}
       {showHistoryModal && (
         <div className="modal fade show d-block" style={{background: 'rgba(0,0,0,0.5)'}}>
             <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
                 <div className="modal-content">
                     <div className="modal-header bg-info text-white">
-                        <h5 className="modal-title"><i className="bi bi-clock-history"></i> ประวัติ: {currentItem.code}</h5>
+                        <h5 className="modal-title">ประวัติ: {currentItem.code}</h5>
                         <button type="button" className="btn-close btn-close-white" onClick={()=>setShowHistoryModal(false)}></button>
                     </div>
                     <div className="modal-body bg-light">
-                        <div className="alert alert-light border shadow-sm mb-3">
-                            <strong>ชื่อ:</strong> {currentItem.name} | <strong>สถานะปัจจุบัน:</strong> {currentItem.status}
-                        </div>
+                        <p className="mb-3"><strong>ชื่อ:</strong> {currentItem.name}</p>
                         <table className="table table-striped table-bordered bg-white">
                             <thead className="table-primary"><tr><th>วันที่</th><th>เวลา</th><th>ที่เก็บ</th><th>สถานะ</th><th>หมายเหตุ</th></tr></thead>
                             <tbody>

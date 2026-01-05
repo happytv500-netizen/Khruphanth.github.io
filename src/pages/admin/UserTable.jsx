@@ -1,22 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import { fetchSheetData, postAction } from '../../services/api';
-import { SHEET_NAMES } from '../../config/config';
+import { fetchSheetData, postAction } from '../services/api';
+import { SHEET_NAMES } from '../config/config';
 
 const UserTable = () => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   
-  // Modal State
   const [showModal, setShowModal] = useState(false);
-  const [modalMode, setModalMode] = useState('add'); // add | edit
+  const [modalMode, setModalMode] = useState('add');
   const [currentUser, setCurrentUser] = useState({ id: '', pass: '', name: '', role: 'user' });
 
   const loadUsers = async () => {
     setLoading(true);
     try {
       const rows = await fetchSheetData(SHEET_NAMES.LOGIN || "LOGIN");
-      // LOGIN Sheet: [0:ID, 1:Pass, 2:Role, 3:Name]
+      // LOGIN: [0:ID, 1:Pass, 2:Role, 3:Name]
       const mapped = rows.map((r, i) => ({ 
         row: i + 2, 
         id: r[0], 
@@ -36,7 +35,6 @@ const UserTable = () => {
     setShowModal(false);
     Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
-    // ส่ง Key ให้ตรงกับที่ Google Script รอรับ (ID, Pass, Name, Status)
     const payload = {
         "ID": currentUser.id,
         "Pass": currentUser.pass,
@@ -119,7 +117,6 @@ const UserTable = () => {
                         <div className="modal-body">
                             <div className="mb-3">
                                 <label className="form-label">Username (ID)</label>
-                                {/* ปลดล็อกช่อง ID ให้แก้ไขได้ */}
                                 <input required className="form-control" value={currentUser.id} onChange={e=>setCurrentUser({...currentUser, id:e.target.value})} />
                             </div>
                             <div className="mb-3">
