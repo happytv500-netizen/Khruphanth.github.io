@@ -1,165 +1,167 @@
-import React, { useEffect, useState } from "react";
-import Swal from "sweetalert2";
-import { fetchSheetData, postAction } from "../../services/api";
-import { SHEET_NAMES } from "../../config/config";
+import React, { useState, useEffect } from 'react';
+import Swal from 'sweetalert2';
+import { fetchSheetData, postAction } from '../../services/api';
+import { SHEET_NAMES } from '../../config/config';
 
 const UserTable = () => {
-  const [list, setList] = useState([]);
+  const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
 
   const [showModal, setShowModal] = useState(false);
-  const [mode, setMode] = useState("add"); // add | edit
-  const [user, setUser] = useState({
-    id: "",
-    pass: "",
-    status: "user",
-    name: "",
+  const [modalMode, setModalMode] = useState('add');
+
+  const [currentUser, setCurrentUser] = useState({
+    row: '',
+    code: '',
+    id: '',
+    pass: '',
+    role: 'user',
+    name: ''
   });
 
-  // ---------------- LOAD ----------------
+  // ================= LOAD =================
   const loadUsers = async () => {
     setLoading(true);
     try {
       const rows = await fetchSheetData(SHEET_NAMES.LOGIN || "LOGIN");
+
+      // LOGIN: [0:Code, 1:ID, 2:Pass, 3:Role, 4:Name]
       const mapped = rows.map((r, i) => ({
         row: i + 2,
-        id: r[0],
-        pass: r[1],
-        status: r[2],
-        name: r[3],
+        code: r[0],
+        id: r[1],
+        pass: r[2],
+        role: r[3],
+        name: r[4]
       }));
-      setList(mapped);
+
+      setData(mapped);
     } catch (e) {
       console.error(e);
-      Swal.fire("โหลดข้อมูลล้มเหลว", "", "error");
     }
     setLoading(false);
   };
 
-  useEffect(() => {
-    loadUsers();
-  }, []);
+  useEffect(() => { loadUsers(); }, []);
 
-  // ---------------- SAVE ----------------
-  const saveUser = async (e) => {
+  // ================= SAVE =================
+  const handleSave = async (e) => {
     e.preventDefault();
     setShowModal(false);
 
     Swal.fire({
-      title: "กำลังบันทึก...",
-      didOpen: () => Swal.showLoading(),
+      title: 'กำลังบันทึก...',
       allowOutsideClick: false,
+      didOpen: () => Swal.showLoading()
     });
 
-    if (mode === "add") {
-      await postAction("LOGIN", "addUser", {
-        id: user.id,
-        pass: user.pass,
-        status: user.status,
-        name: user.name,
-      });
+    const payload = {
+      Code: currentUser.code,
+      ID: currentUser.id,
+      Pass: currentUser.pass,
+      Status: currentUser.role,
+      Name: currentUser.name
+    };
+
+    if (modalMode === 'add') {
+      await postAction("LOGIN", "add", payload);
     } else {
-      await postAction("LOGIN", "updateUser", {
-        row: user.row,
-        status: user.status,
-        name: user.name,
+      await postAction("LOGIN", "update", {
+        ...payload,
+        row: currentUser.row
       });
     }
 
-    Swal.fire("สำเร็จ", "", "success");
+    Swal.fire('สำเร็จ', '', 'success');
     loadUsers();
   };
 
-  // ---------------- DELETE ----------------
-  const deleteUser = async (row) => {
-    const confirm = await Swal.fire({
-      title: "ลบสมาชิก?",
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonColor: "#d33",
+  // ================= DELETE =================
+  const handleDelete = async (row) => {
+    const res = await Swal.fire({
+      title: 'ลบสมาชิก?',
+      icon: 'warning',
+      showCancelButton: true
     });
 
-    if (!confirm.isConfirmed) return;
+    if (res.isConfirmed) {
+      Swal.fire({
+        title: 'กำลังลบ...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
 
-    Swal.fire({
-      title: "กำลังลบ...",
-      didOpen: () => Swal.showLoading(),
-      allowOutsideClick: false,
-    });
-
-    await postAction("LOGIN", "delete", { row });
-
-    Swal.fire("ลบแล้ว", "", "success");
-    loadUsers();
+      await postAction("LOGIN", "delete", { row });
+      Swal.fire('ลบแล้ว', '', 'success');
+      loadUsers();
+    }
   };
 
-  // ---------------- OPEN MODAL ----------------
+  // ================= MODAL =================
   const openAdd = () => {
-    setUser({ id: "", pass: "", status: "user", name: "" });
-    setMode("add");
+    setCurrentUser({
+      row: '',
+      code: '',
+      id: '',
+      pass: '',
+      role: 'user',
+      name: ''
+    });
+    setModalMode('add');
     setShowModal(true);
   };
 
   const openEdit = (u) => {
-    setUser(u);
-    setMode("edit");
+    setCurrentUser(u);
+    setModalMode('edit');
     setShowModal(true);
   };
 
-  // ---------------- UI ----------------
+  // ================= UI =================
   return (
-    <div className="card shadow-sm rounded-4">
-      <div className="card-header bg-white d-flex justify-content-between align-items-center">
+    <div className="card border-0 shadow-sm rounded-4">
+      <div className="card-header bg-white py-3 d-flex justify-content-between align-items-center">
         <h5 className="fw-bold text-primary m-0">จัดการสมาชิก</h5>
-        <button className="btn btn-primary btn-sm" onClick={openAdd}>
-          + เพิ่มสมาชิก
-        </button>
+        <div>
+          <button className="btn btn-outline-secondary btn-sm me-2" onClick={loadUsers}>
+            รีเฟรช
+          </button>
+          <button className="btn btn-primary btn-sm" onClick={openAdd}>
+            + เพิ่มสมาชิก
+          </button>
+        </div>
       </div>
 
       <div className="table-responsive p-3">
         <table className="table table-hover align-middle">
           <thead className="table-light">
             <tr>
+              <th>รหัส</th>
               <th>ID</th>
-              <th>ชื่อ</th>
+              <th>ชื่อ-สกุล</th>
               <th>สิทธิ์</th>
-              <th className="text-center">จัดการ</th>
+              <th>จัดการ</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr>
-                <td colSpan="4" className="text-center p-4">
-                  กำลังโหลด...
-                </td>
-              </tr>
+              <tr><td colSpan="5" className="text-center p-4">กำลังโหลด...</td></tr>
             ) : (
-              list.map((u, i) => (
+              data.map((u, i) => (
                 <tr key={i}>
+                  <td>{u.code}</td>
                   <td>{u.id}</td>
                   <td>{u.name}</td>
                   <td>
-                    <span
-                      className={`badge ${
-                        u.status === "admin"
-                          ? "bg-danger"
-                          : "bg-info text-dark"
-                      }`}
-                    >
-                      {u.status}
+                    <span className={`badge rounded-pill ${u.role === 'admin' ? 'bg-danger' : 'bg-info text-dark'}`}>
+                      {u.role}
                     </span>
                   </td>
-                  <td className="text-center">
-                    <button
-                      className="btn btn-warning btn-sm me-1"
-                      onClick={() => openEdit(u)}
-                    >
+                  <td>
+                    <button className="btn btn-warning btn-sm me-1 text-dark" onClick={() => openEdit(u)}>
                       แก้ไข
                     </button>
-                    <button
-                      className="btn btn-danger btn-sm"
-                      onClick={() => deleteUser(u.row)}
-                    >
+                    <button className="btn btn-danger btn-sm" onClick={() => handleDelete(u.row)}>
                       ลบ
                     </button>
                   </td>
@@ -170,73 +172,74 @@ const UserTable = () => {
         </table>
       </div>
 
-      {/* MODAL */}
+      {/* ===== MODAL ===== */}
       {showModal && (
-        <div
-          className="modal fade show d-block"
-          style={{ background: "rgba(0,0,0,.5)" }}
-        >
+        <div className="modal fade show d-block" style={{ background: 'rgba(0,0,0,0.5)' }}>
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content">
-              <form onSubmit={saveUser}>
+              <form onSubmit={handleSave}>
                 <div className="modal-header">
                   <h5 className="modal-title">
-                    {mode === "add" ? "เพิ่มสมาชิก" : "แก้ไขสมาชิก"}
+                    {modalMode === 'add' ? 'เพิ่มสมาชิก' : 'แก้ไขสมาชิก'}
                   </h5>
                 </div>
 
                 <div className="modal-body">
-                  {mode === "add" && (
-                    <>
-                      <input
-                        required
-                        className="form-control mb-2"
-                        placeholder="Username"
-                        value={user.id}
-                        onChange={(e) =>
-                          setUser({ ...user, id: e.target.value })
-                        }
-                      />
-                      <input
-                        required
-                        className="form-control mb-2"
-                        placeholder="Password"
-                        value={user.pass}
-                        onChange={(e) =>
-                          setUser({ ...user, pass: e.target.value })
-                        }
-                      />
-                    </>
-                  )}
+                  <div className="mb-2">
+                    <label className="form-label">รหัส</label>
+                    <input
+                      required
+                      className="form-control"
+                      value={currentUser.code}
+                      onChange={e => setCurrentUser({ ...currentUser, code: e.target.value })}
+                    />
+                  </div>
 
-                  <input
-                    required
-                    className="form-control mb-2"
-                    placeholder="ชื่อ-สกุล"
-                    value={user.name}
-                    onChange={(e) =>
-                      setUser({ ...user, name: e.target.value })
-                    }
-                  />
+                  <div className="mb-2">
+                    <label className="form-label">Username</label>
+                    <input
+                      required
+                      className="form-control"
+                      value={currentUser.id}
+                      onChange={e => setCurrentUser({ ...currentUser, id: e.target.value })}
+                    />
+                  </div>
 
-                  <select
-                    className="form-select"
-                    value={user.status}
-                    onChange={(e) =>
-                      setUser({ ...user, status: e.target.value })
-                    }
-                  >
-                    <option value="user">User</option>
-                    <option value="admin">Admin</option>
-                  </select>
+                  <div className="mb-2">
+                    <label className="form-label">Password</label>
+                    <input
+                      required
+                      className="form-control"
+                      value={currentUser.pass}
+                      onChange={e => setCurrentUser({ ...currentUser, pass: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="mb-2">
+                    <label className="form-label">ชื่อ-สกุล</label>
+                    <input
+                      required
+                      className="form-control"
+                      value={currentUser.name}
+                      onChange={e => setCurrentUser({ ...currentUser, name: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="mb-2">
+                    <label className="form-label">สิทธิ์</label>
+                    <select
+                      className="form-select"
+                      value={currentUser.role}
+                      onChange={e => setCurrentUser({ ...currentUser, role: e.target.value })}
+                    >
+                      <option value="user">User</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div className="modal-footer">
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setShowModal(false)}
-                  >
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>
                     ปิด
                   </button>
                   <button type="submit" className="btn btn-primary">

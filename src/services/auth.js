@@ -1,60 +1,133 @@
 import { fetchSheetData } from './api';
 import { SHEET_NAMES } from '../config/config';
 
-// Key สำหรับเก็บข้อมูลลง LocalStorage (เพื่อให้จำการเข้าระบบไว้)
 const STORAGE_KEY = 'loginUser';
+const EXPIRE_KEY = 'loginExpire';
+const SESSION_MIN = 60; // อายุ session (นาที)
 
+/* =========================
+   LOGIN
+========================= */
 export const AuthService = {
-  // ฟังก์ชันล็อกอิน
   login: async (username, password) => {
     try {
-      // 1. ดึงข้อมูลจาก Sheet 'LOGIN'
       const rows = await fetchSheetData(SHEET_NAMES.LOGIN || "LOGIN");
-      
-      // 2. แปลงข้อมูลเป็น Object เพื่อให้เช็คง่ายๆ
-      // โครงสร้าง Sheet LOGIN: [0:ID, 1:Pass, 2:Status, 3:Name]
+
       const users = rows.map(r => ({
         username: String(r[0] || "").trim().toLowerCase(),
         password: String(r[1] || "").trim(),
-        role: String(r[2] || "").trim().toLowerCase(), // admin หรือ user
+        role: String(r[2] || "").trim().toLowerCase(),
         name: String(r[3] || "").trim()
-      })).filter(u => u.username && u.password); // กรองแถวว่างทิ้ง
+      })).filter(u => u.username && u.password);
 
-      // 3. ตรวจสอบ User & Password
-      const foundUser = users.find(u => 
-        u.username === username.toLowerCase().trim() && 
+      const found = users.find(u =>
+        u.username === username.toLowerCase().trim() &&
         u.password === password.trim()
       );
 
-      if (foundUser) {
-        // ถ้าเจอ -> บันทึกลงเครื่อง และส่งค่ากลับ
-        const userData = { 
-          name: foundUser.name, 
-          role: foundUser.role, 
-          username: foundUser.username 
-        };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
-        return { success: true, user: userData };
+      if (!found) {
+        return { success: false, message: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" };
       }
 
-      return { success: false, message: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" };
+      const userData = {
+        username: found.username,
+        name: found.name,
+        role: found.role
+      };
+
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
+      localStorage.setItem(
+        EXPIRE_KEY,
+        Date.now() + SESSION_MIN * 60 * 1000
+      );
+
+      return { success: true, user: userData };
 
     } catch (err) {
-      console.error("Login Error:", err);
-      return { success: false, message: "เกิดข้อผิดพลาดในการเชื่อมต่อระบบ" };
+      console.error("Login error:", err);
+      return { success: false, message: "ระบบมีปัญหา" };
     }
   },
 
-  // ฟังก์ชันดึงข้อมูลคนล็อกอินอยู่ (เช็คว่าล็อกอินยัง)
+  /* =========================
+     GET CURRENT USER + AUTO LOGOUT
+  ========================= */
   getCurrentUser: () => {
-    const json = localStorage.getItem(STORAGE_KEY);
-    return json ? JSON.parse(json) : null;
+    const user = localStorage.getItem(STORAGE_KEY);
+    const expire = localStorage.getItem(EXPIRE_KEY);
+
+    if (!user || !expire) return null;
+
+    if (Date.now() > Number(expire)) {
+      AuthService.logout(true);
+      return null;
+    }
+
+    return JSON.parse(user);
   },
 
-  // ฟังก์ชันออกจากระบบ
-  logout: () => {
+  /* =========================
+     LOGOUT + CLEAR STATE
+  ========================= */
+  logout: (silent = false) => {
     localStorage.removeItem(STORAGE_KEY);
-    // ล้างค่าแล้ว Redirect ไปหน้า Login
-    window.location.href = "/login"; 
+    localStorage.removeItem(EXPIRE_KEY);
+    sessionStorage.clear();
+
+    if (!silent) {
+      alert("Session หมดอายุ กรุณาเข้าสู่ระบบใหม่");
+    }
+
+    window.location.replace("/");
   }
 };
+
+/* =========================
+   🔐 AUTH GUARD (ADMIN)
+========================= */
+export function requireAdmin() {
+  const user = AuthService.getCurrentUser();
+
+  if (!user || user.role !== "admin") {
+    window.location.replace("/");
+    return false;
+  }
+  return true;
+}
+
+/* =========================
+   🔁 SESSION WATCHDOG
+   (เรียกครั้งเดียวตอน app โหลด)
+========================= */
+export function startSessionWatcher() {
+  setInterval(() => {
+    AuthService.getCurrentUser();
+  }, 60000);
+}
+
+/* =========================
+   🚫 BASIC DEVTOOLS BLOCK
+   (ไม่กันเทพ แต่กันมือซน)
+========================= */
+export function blockDevTools() {
+  document.addEventListener('contextmenu', e => e.preventDefault());
+
+  document.addEventListener('keydown', e => {
+    if (
+      e.key === "F12" ||
+      (e.ctrlKey && e.shiftKey && ["I", "C", "J"].includes(e.key)) ||
+      (e.ctrlKey && e.key === "U")
+    ) {
+      e.preventDefault();
+    }
+  });
+}
+
+/* =========================
+   🧠 INIT SECURITY
+   (เรียกครั้งเดียว)
+========================= */
+export function initAuthProtection() {
+  startSessionWatcher();
+  blockDevTools();
+}
