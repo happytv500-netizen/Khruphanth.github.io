@@ -1,10 +1,50 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Swal from 'sweetalert2';
-import { fetchSheetData, postAction } from '../../services/api';
-import { SHEET_NAMES } from '../../config/config';
+import { fetchSheetData, postAction } from '../services/api';
+import { SHEET_NAMES } from '../config/config';
 
-// ตัวเลือกหมวดหมู่ (ปรับแก้ได้ตามจริง)
+// หมวดหมู่สำหรับ Dropdown
 const CATEGORIES = ["-", "เครื่องใช้ไฟฟ้า", "พัดลม", "เครื่องปรับอากาศ", "เฟอร์นิเจอร์", "อุปกรณ์คอมพิวเตอร์", "สื่อการสอน", "อื่นๆ"];
+
+// --- Component ย่อย: รูปภาพที่โหลดใหม่ได้ (RetryImage) ---
+const RetryImage = ({ src, alt, height }) => {
+  const [imgSrc, setImgSrc] = useState(src);
+  const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { setImgSrc(src); setError(false); setLoading(true); }, [src]);
+
+  const handleRetry = (e) => {
+    e.stopPropagation();
+    setLoading(true);
+    setError(false);
+    // เติม timestamp เพื่อบังคับโหลดใหม่
+    setImgSrc(`${src}&t=${Date.now()}`);
+  };
+
+  return (
+    <div className="position-relative d-inline-block" style={{ minWidth: '30px', minHeight: height }}>
+      {loading && !error && <div className="spinner-border spinner-border-sm text-secondary" role="status"></div>}
+      
+      <img 
+        src={imgSrc} 
+        alt={alt} 
+        height={height}
+        className={error ? 'd-none' : ''}
+        onLoad={() => setLoading(false)}
+        onError={() => { setError(true); setLoading(false); }}
+        style={{ cursor: 'pointer' }}
+        onClick={() => window.open(src, '_blank')}
+      />
+
+      {error && (
+        <button className="btn btn-sm btn-outline-secondary p-0 px-1" onClick={handleRetry} title="โหลดรูปใหม่">
+          <i className="bi bi-arrow-clockwise"></i>
+        </button>
+      )}
+    </div>
+  );
+};
 
 const InventoryTable = () => {
   const [data, setData] = useState([]);
@@ -14,8 +54,11 @@ const InventoryTable = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   
-  // --- States Add/View ---
-  const [currentItem, setCurrentItem] = useState({ code: '', name: '', category: '-', detail: '' });
+  // --- States Add Batch (เพิ่มหลายรายการ) ---
+  const [newItems, setNewItems] = useState([{ id: 1, code: '', name: '', category: '-', detail: '' }]);
+  
+  // --- States View History ---
+  const [currentItem, setCurrentItem] = useState(null);
   const [historyLogs, setHistoryLogs] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
@@ -26,9 +69,9 @@ const InventoryTable = () => {
   const [itemsPerPage, setItemsPerPage] = useState(20);
 
   // --- States Bulk Actions ---
-  const [selectedRows, setSelectedRows] = useState(new Set()); // เก็บ row ที่ถูกติ๊ก
-  const [isMultiEditMode, setIsMultiEditMode] = useState(false); // โหมดแก้ไขหลายรายการ
-  const [editBuffer, setEditBuffer] = useState({}); // เก็บค่าที่ถูกแก้ { row: { code, name, ... } }
+  const [selectedRows, setSelectedRows] = useState(new Set());
+  const [isMultiEditMode, setIsMultiEditMode] = useState(false);
+  const [editBuffer, setEditBuffer] = useState({}); // { rowId: { code:..., name:... } }
 
   // ================= LOAD DATA =================
   const loadList = async () => {
@@ -58,25 +101,27 @@ const InventoryTable = () => {
 
   useEffect(() => { loadList(); }, []);
 
-  // ================= DATA PROCESSING =================
+  // ================= PROCESS DATA =================
   const processedData = useMemo(() => {
     let items = [...data];
-    
-    // 1. Search
     if (searchTerm) {
       const lower = searchTerm.toLowerCase();
       items = items.filter(item => 
-        item.code.toLowerCase().includes(lower) ||
-        item.name.toLowerCase().includes(lower) ||
-        item.category.toLowerCase().includes(lower)
+        String(item.code).toLowerCase().includes(lower) ||
+        String(item.name).toLowerCase().includes(lower) ||
+        String(item.category).toLowerCase().includes(lower)
       );
     }
-
-    // 2. Sort
     if (sortConfig.key) {
       items.sort((a, b) => {
         const valA = a[sortConfig.key];
         const valB = b[sortConfig.key];
+        // เปรียบเทียบตัวเลขถ้าเป็นไปได้
+        const numA = parseFloat(valA);
+        const numB = parseFloat(valB);
+        if (!isNaN(numA) && !isNaN(numB)) {
+            return sortConfig.direction === 'asc' ? numA - numB : numB - numA;
+        }
         if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
         if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
         return 0;
@@ -85,13 +130,10 @@ const InventoryTable = () => {
     return items;
   }, [data, searchTerm, sortConfig]);
 
-  // Pagination logic
   const totalPages = Math.ceil(processedData.length / itemsPerPage);
   const currentItems = processedData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-  // ================= HANDLERS =================
-
-  // 1. Checkbox Handler
+  // ================= HANDLERS: SELECTION =================
   const toggleSelect = (rowId) => {
     const newSet = new Set(selectedRows);
     if (newSet.has(rowId)) newSet.delete(rowId);
@@ -109,52 +151,104 @@ const InventoryTable = () => {
     }
   };
 
-  // 2. Multi-Edit Handler
-  const handleBufferChange = (row, field, value) => {
-    setEditBuffer(prev => ({
-      ...prev,
-      [row]: {
-        ...prev[row], // ค่าเดิมที่แก้ไว้
-        [field]: value // ค่าใหม่
-      }
-    }));
+  // ================= HANDLERS: ADD BATCH =================
+  const handleAddNewRow = () => {
+    setNewItems([...newItems, { id: Date.now(), code: '', name: '', category: '-', detail: '' }]);
   };
 
-  // 3. Save Bulk Edit
-  const saveBulkEdit = async () => {
-    const rowsToUpdate = Object.keys(editBuffer);
-    if (rowsToUpdate.length === 0) {
-      setIsMultiEditMode(false);
+  const handleRemoveNewRow = (id) => {
+    setNewItems(newItems.filter(item => item.id !== id));
+  };
+
+  const handleNewItemChange = (id, field, value) => {
+    setNewItems(newItems.map(item => item.id === id ? { ...item, [field]: value } : item));
+  };
+
+  const saveBatchAdd = async () => {
+    // กรองเอาเฉพาะแถวที่มีข้อมูลรหัสและชื่อ
+    const validItems = newItems.filter(i => i.code.trim() !== '' && i.name.trim() !== '');
+    if (validItems.length === 0) {
+      Swal.fire('แจ้งเตือน', 'กรุณากรอกข้อมูลอย่างน้อย 1 รายการ (รหัสและชื่อ)', 'warning');
       return;
     }
 
-    Swal.fire({ title: `กำลังบันทึก ${rowsToUpdate.length} รายการ...`, didOpen: () => Swal.showLoading() });
+    setShowAddModal(false);
+    Swal.fire({ 
+        title: 'กำลังบันทึก...', 
+        html: `กำลังเพิ่ม 0/${validItems.length} รายการ`,
+        allowOutsideClick: false, 
+        didOpen: () => Swal.showLoading() 
+    });
 
-    // Loop ส่ง API ทีละรายการ (หรือถ้า API รองรับ Batch ก็ส่งทีเดียวได้)
-    for (const row of rowsToUpdate) {
-      const changes = editBuffer[row];
-      const original = data.find(d => String(d.row) === String(row));
-      if (!original) continue;
+    let successCount = 0;
+    for (let i = 0; i < validItems.length; i++) {
+        const item = validItems[i];
+        Swal.update({ html: `กำลังเพิ่ม ${i + 1}/${validItems.length} รายการ<br>(${item.code})` });
+        
+        await postAction("DATA", "add", {
+            "รหัส": item.code,
+            "ชื่อ": item.name,
+            "ที่อยู่": item.category,
+            "สถานะ": "ใช้งานได้",
+            "รายละเอียด": item.detail || "-"
+        });
+        successCount++;
+    }
 
-      // Merge ค่าเดิมกับค่าที่แก้
-      await postAction("DATA", "edit", {
-        row: row,
-        "รหัส": changes.code !== undefined ? changes.code : original.code,
-        "ชื่อ": changes.name !== undefined ? changes.name : original.name,
-        "ที่อยู่": changes.category !== undefined ? changes.category : original.category,
-        "สถานะ": original.status,
-        "รายละเอียด": original.detail
-      });
+    Swal.fire('สำเร็จ', `เพิ่มข้อมูลเสร็จสิ้น ${successCount} รายการ`, 'success');
+    setNewItems([{ id: Date.now(), code: '', name: '', category: '-', detail: '' }]); // Reset form
+    loadList();
+  };
+
+  // ================= HANDLERS: BULK EDIT =================
+  const startBulkEdit = () => {
+    if (selectedRows.size === 0) return Swal.fire('เตือน', 'กรุณาเลือกรายการที่จะแก้ไขก่อน', 'warning');
+    
+    // Initialize editBuffer with current values of selected rows
+    const buffer = {};
+    selectedRows.forEach(rowId => {
+        const item = data.find(d => d.row === rowId);
+        if (item) {
+            buffer[rowId] = { ...item };
+        }
+    });
+    setEditBuffer(buffer);
+    setIsMultiEditMode(true);
+  };
+
+  const handleEditChange = (rowId, field, value) => {
+    setEditBuffer(prev => ({
+        ...prev,
+        [rowId]: { ...prev[rowId], [field]: value }
+    }));
+  };
+
+  const saveBulkEdit = async () => {
+    const rowsToUpdate = Object.keys(editBuffer);
+    if (rowsToUpdate.length === 0) return setIsMultiEditMode(false);
+
+    Swal.fire({ title: `กำลังอัปเดต ${rowsToUpdate.length} รายการ...`, didOpen: () => Swal.showLoading() });
+
+    for (const rowId of rowsToUpdate) {
+        const changes = editBuffer[rowId];
+        await postAction("DATA", "edit", {
+            row: rowId,
+            "รหัส": changes.code,
+            "ชื่อ": changes.name,
+            "ที่อยู่": changes.category,
+            "สถานะ": changes.status,
+            "รายละเอียด": changes.detail
+        });
     }
 
     Swal.fire('เรียบร้อย', 'บันทึกข้อมูลแล้ว', 'success');
     loadList();
   };
 
-  // 4. Bulk Delete
+  // ================= HANDLERS: BULK DELETE =================
   const deleteBulk = async () => {
     const count = selectedRows.size;
-    if (count === 0) return;
+    if (count === 0) return Swal.fire('เตือน', 'กรุณาเลือกรายการที่จะลบ', 'warning');
 
     const res = await Swal.fire({
       title: `ลบ ${count} รายการ?`,
@@ -167,9 +261,7 @@ const InventoryTable = () => {
 
     if (res.isConfirmed) {
       Swal.fire({ title: 'กำลังลบ...', didOpen: () => Swal.showLoading() });
-      
-      // แปลง Set เป็น Array แล้ววนลบ (เรียงจาก row มากไปน้อย เพื่อป้องกัน row shift)
-      const sortedRows = Array.from(selectedRows).sort((a, b) => b - a);
+      const sortedRows = Array.from(selectedRows).sort((a, b) => b - a); // ลบจากท้ายขึ้นบน
       
       for (const row of sortedRows) {
         await postAction("DATA", "delete", { row });
@@ -180,36 +272,9 @@ const InventoryTable = () => {
     }
   };
 
-  // 5. Add Item (Continuous)
-  const handleAddItem = async (e) => {
-    e.preventDefault();
-    // ไม่ปิด Modal แต่แสดง Loading overlay ชั่วคราว
-    Swal.fire({ title: 'กำลังเพิ่ม...', didOpen: () => Swal.showLoading() });
-
-    await postAction("DATA", "add", {
-      "รหัส": currentItem.code,
-      "ชื่อ": currentItem.name,
-      "ที่อยู่": currentItem.category,
-      "สถานะ": "ใช้งานได้",
-      "รายละเอียด": currentItem.detail || "-"
-    });
-
-    Swal.close(); // ปิด Loading
-    
-    // เคลียร์ฟอร์ม เตรียมกรอกรายการต่อไป
-    setCurrentItem({ code: '', name: '', category: '-', detail: '' });
-    
-    // แจ้งเตือนเล็กๆ (Toast)
-    const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
-    Toast.fire({ icon: 'success', title: 'เพิ่มรายการแล้ว' });
-    
-    // รีโหลดข้อมูลเบื้องหลัง
-    loadList();
-  };
-
-  // 6. View History
+  // ================= HANDLERS: HISTORY =================
   const openHistory = async (item) => {
-    setCurrentItem(item); // เก็บตัวที่เลือกไว้โชว์ใน header modal
+    setCurrentItem(item);
     setShowHistoryModal(true);
     setHistoryLoading(true);
     setHistoryLogs([]);
@@ -222,55 +287,61 @@ const InventoryTable = () => {
     setHistoryLoading(false);
   };
 
-  // Helper: Download Image
-  const downloadImg = (url, name, e) => {
-    e.stopPropagation(); // ป้องกันไม่ให้ trigger row click
-    // Logic download เดิม...
-    window.open(url, '_blank'); 
-  };
-
   // Helper: Sort Icon
   const getSortIcon = (key) => sortConfig.key === key 
-    ? (sortConfig.direction === 'asc' ? <i className="bi bi-caret-up-fill"></i> : <i className="bi bi-caret-down-fill"></i>)
-    : <i className="bi bi-caret-up text-muted opacity-25"></i>;
+    ? (sortConfig.direction === 'asc' ? <i className="bi bi-caret-up-fill ms-1"></i> : <i className="bi bi-caret-down-fill ms-1"></i>)
+    : <i className="bi bi-caret-up ms-1 text-muted opacity-25"></i>;
 
   return (
     <div className="card shadow-sm rounded-4">
       {/* --- HEADER --- */}
       <div className="card-header bg-white py-3">
         <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
+          
+          {/* Left: Title */}
+          <h5 className="fw-bold text-primary m-0"><i className="bi bi-box-seam me-2"></i>ฐานข้อมูลครุภัณฑ์</h5>
+          
+          {/* Right: Actions Group */}
           <div className="d-flex align-items-center gap-2">
-            <h5 className="fw-bold text-primary m-0">ฐานข้อมูลครุภัณฑ์</h5>
-            {/* Bulk Action Buttons */}
-            {isMultiEditMode ? (
-              <div className="btn-group btn-group-sm">
-                <button className="btn btn-success" onClick={saveBulkEdit}><i className="bi bi-check-lg"></i> บันทึกทั้งหมด</button>
-                <button className="btn btn-secondary" onClick={() => {setIsMultiEditMode(false); setEditBuffer({});}}>ยกเลิก</button>
-              </div>
-            ) : (
-              <button className="btn btn-outline-warning btn-sm text-dark" onClick={() => setIsMultiEditMode(true)}>
-                <i className="bi bi-pencil-square"></i> แก้ไขหลายรายการ
-              </button>
-            )}
-            
-            {selectedRows.size > 0 && !isMultiEditMode && (
-              <button className="btn btn-danger btn-sm" onClick={deleteBulk}>
-                <i className="bi bi-trash"></i> ลบที่เลือก ({selectedRows.size})
-              </button>
-            )}
-          </div>
+             {/* Search */}
+             <div className="input-group input-group-sm" style={{width: '200px'}}>
+                <span className="input-group-text bg-light"><i className="bi bi-search"></i></span>
+                <input 
+                    className="form-control" 
+                    placeholder="ค้นหา..." 
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                />
+            </div>
 
-          <div className="d-flex gap-2">
-            <input 
-              className="form-control form-control-sm" 
-              placeholder="🔍 ค้นหา..." 
-              style={{width: '200px'}}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-            <button className="btn btn-primary btn-sm" onClick={() => { setShowAddModal(true); setCurrentItem({code:'', name:'', category:'-', detail:''}); }}>
-              + เพิ่ม
-            </button>
+            {/* Action Buttons */}
+            {isMultiEditMode ? (
+               <>
+                 <button className="btn btn-success btn-sm" onClick={saveBulkEdit}><i className="bi bi-save me-1"></i>บันทึก</button>
+                 <button className="btn btn-secondary btn-sm" onClick={() => {setIsMultiEditMode(false); setEditBuffer({});}}>ยกเลิก</button>
+               </>
+            ) : (
+               <>
+                 <button className="btn btn-outline-secondary btn-sm" onClick={loadList} title="รีเฟรช">
+                    <i className="bi bi-arrow-clockwise"></i>
+                 </button>
+                 
+                 {selectedRows.size > 0 && (
+                    <>
+                        <button className="btn btn-warning btn-sm" onClick={startBulkEdit}>
+                            <i className="bi bi-pencil"></i> แก้ไข ({selectedRows.size})
+                        </button>
+                        <button className="btn btn-danger btn-sm" onClick={deleteBulk}>
+                            <i className="bi bi-trash"></i> ลบ ({selectedRows.size})
+                        </button>
+                    </>
+                 )}
+
+                 <button className="btn btn-primary btn-sm" onClick={() => setShowAddModal(true)}>
+                    <i className="bi bi-plus-lg me-1"></i> เพิ่มรายการ
+                 </button>
+               </>
+            )}
           </div>
         </div>
       </div>
@@ -284,12 +355,13 @@ const InventoryTable = () => {
                 <input type="checkbox" className="form-check-input" 
                   checked={selectedRows.size === currentItems.length && currentItems.length > 0} 
                   onChange={toggleSelectAll} 
+                  disabled={isMultiEditMode}
                 />
               </th>
-              <th onClick={() => setSortConfig({ key: 'no', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })} style={{cursor:'pointer'}}>
+              <th onClick={() => setSortConfig({ key: 'no', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })} style={{cursor:'pointer', width: '80px'}}>
                 ลำดับ {getSortIcon('no')}
               </th>
-              <th onClick={() => setSortConfig({ key: 'code', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })} style={{cursor:'pointer'}}>
+              <th onClick={() => setSortConfig({ key: 'code', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })} style={{cursor:'pointer', width: '150px'}}>
                 รหัส {getSortIcon('code')}
               </th>
               <th onClick={() => setSortConfig({ key: 'name', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })} style={{cursor:'pointer'}}>
@@ -298,6 +370,7 @@ const InventoryTable = () => {
               <th onClick={() => setSortConfig({ key: 'category', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })} style={{cursor:'pointer'}}>
                 หมวดหมู่ {getSortIcon('category')}
               </th>
+              
               {!isMultiEditMode && (
                 <>
                   <th className="text-center">Barcode</th>
@@ -307,65 +380,66 @@ const InventoryTable = () => {
             </tr>
           </thead>
           <tbody>
-            {currentItems.map((item, i) => {
-              const buffer = editBuffer[item.row] || {}; // ค่าที่กำลังแก้ (ถ้ามี)
-              
+            {currentItems.length === 0 ? (
+               <tr><td colSpan="7" className="text-center py-5 text-muted">ไม่พบข้อมูล</td></tr>
+            ) : currentItems.map((item, i) => {
+              const inEdit = isMultiEditMode && selectedRows.has(item.row);
+              const buffer = inEdit ? editBuffer[item.row] : item;
+
               return (
                 <tr 
-                  key={i} 
-                  className={!isMultiEditMode ? "cursor-pointer" : ""}
+                  key={item.row} 
+                  className={!isMultiEditMode ? "align-middle table-row-hover" : "align-middle"}
+                  style={!isMultiEditMode ? { cursor: 'pointer' } : {}}
                   onClick={!isMultiEditMode ? () => openHistory(item) : undefined}
-                  title={!isMultiEditMode ? "คลิกเพื่อดูรายละเอียดเพิ่มเติม" : ""}
-                  style={{ transition: '0.2s' }}
+                  title={!isMultiEditMode ? "คลิกเพื่อดูประวัติ" : ""}
                 >
                   <td className="text-center" onClick={e => e.stopPropagation()}>
                     <input type="checkbox" className="form-check-input" 
                       checked={selectedRows.has(item.row)} 
-                      onChange={() => toggleSelect(item.row)} 
+                      onChange={() => toggleSelect(item.row)}
+                      disabled={isMultiEditMode}
                     />
                   </td>
                   <td>{item.no}</td>
-                  
-                  {/* Column: Code */}
+
+                  {/* Code */}
                   <td>
-                    {isMultiEditMode ? (
-                      <input className="form-control form-control-sm" 
-                        value={buffer.code !== undefined ? buffer.code : item.code}
-                        onChange={(e) => handleBufferChange(item.row, 'code', e.target.value)}
-                      />
+                    {inEdit ? (
+                        <input className="form-control form-control-sm" value={buffer.code} onChange={e => handleEditChange(item.row, 'code', e.target.value)} />
                     ) : <span className="fw-bold text-primary">{item.code}</span>}
                   </td>
 
-                  {/* Column: Name */}
+                  {/* Name */}
                   <td>
-                    {isMultiEditMode ? (
-                      <input className="form-control form-control-sm" 
-                        value={buffer.name !== undefined ? buffer.name : item.name}
-                        onChange={(e) => handleBufferChange(item.row, 'name', e.target.value)}
-                      />
+                    {inEdit ? (
+                        <input className="form-control form-control-sm" value={buffer.name} onChange={e => handleEditChange(item.row, 'name', e.target.value)} />
                     ) : item.name}
                   </td>
 
-                  {/* Column: Category */}
+                  {/* Category */}
                   <td>
-                    {isMultiEditMode ? (
-                      <select className="form-select form-select-sm"
-                        value={buffer.category !== undefined ? buffer.category : item.category}
-                        onChange={(e) => handleBufferChange(item.row, 'category', e.target.value)}
-                      >
-                        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
+                    {inEdit ? (
+                        <select className="form-select form-select-sm" value={buffer.category} onChange={e => handleEditChange(item.row, 'category', e.target.value)}>
+                            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
                     ) : <span className="badge bg-secondary bg-opacity-10 text-dark border">{item.category}</span>}
                   </td>
 
-                  {/* Images (Hide in Edit Mode) */}
+                  {/* Images */}
                   {!isMultiEditMode && (
                     <>
-                      <td className="text-center" onClick={(e) => downloadImg(`https://barcode.tec-it.com/barcode.ashx?data=${item.code}&code=Code128`, 'bc', e)}>
-                        <img src={`https://barcode.tec-it.com/barcode.ashx?data=${item.code}&code=Code128`} height="25" alt="bc" />
+                      <td className="text-center" onClick={e => e.stopPropagation()}>
+                        <RetryImage 
+                            src={`https://barcode.tec-it.com/barcode.ashx?data=${item.code}&code=Code128&translate-esc=on`} 
+                            alt="bc" height="25" 
+                        />
                       </td>
-                      <td className="text-center" onClick={(e) => downloadImg(`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${item.code}`, 'qr', e)}>
-                        <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${item.code}`} height="30" alt="qr" />
+                      <td className="text-center" onClick={e => e.stopPropagation()}>
+                        <RetryImage 
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${item.code}`} 
+                            alt="qr" height="35" 
+                        />
                       </td>
                     </>
                   )}
@@ -377,7 +451,7 @@ const InventoryTable = () => {
       </div>
 
       {/* --- PAGINATION --- */}
-      <div className="card-footer bg-white py-3 d-flex justify-content-between">
+      <div className="card-footer bg-white py-3 d-flex justify-content-between align-items-center">
         <select className="form-select form-select-sm w-auto" value={itemsPerPage} onChange={e => {setItemsPerPage(Number(e.target.value)); setCurrentPage(1);}}>
             <option value="20">20 / หน้า</option>
             <option value="50">50 / หน้า</option>
@@ -385,90 +459,132 @@ const InventoryTable = () => {
         </select>
         <div className="btn-group btn-group-sm">
             <button className="btn btn-outline-secondary" disabled={currentPage===1} onClick={()=>setCurrentPage(p=>p-1)}>ก่อนหน้า</button>
-            <button className="btn btn-outline-secondary disabled">{currentPage} / {totalPages}</button>
-            <button className="btn btn-outline-secondary" disabled={currentPage===totalPages} onClick={()=>setCurrentPage(p=>p+1)}>ถัดไป</button>
+            <span className="btn btn-outline-secondary disabled">{currentPage} / {totalPages || 1}</span>
+            <button className="btn btn-outline-secondary" disabled={currentPage===totalPages || totalPages===0} onClick={()=>setCurrentPage(p=>p+1)}>ถัดไป</button>
         </div>
       </div>
 
-      {/* --- ADD MODAL --- */}
+      {/* --- ADD BATCH MODAL --- */}
       {showAddModal && (
         <div className="modal fade show d-block" style={{background:'rgba(0,0,0,0.5)'}}>
-          <div className="modal-dialog modal-dialog-centered">
+          <div className="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
             <div className="modal-content">
-              <form onSubmit={handleAddItem}>
-                <div className="modal-header bg-primary text-white">
-                  <h5 className="modal-title">+ เพิ่มรายการใหม่</h5>
-                  <button type="button" className="btn-close btn-close-white" onClick={() => setShowAddModal(false)}></button>
+              <div className="modal-header bg-primary text-white">
+                <h5 className="modal-title"><i className="bi bi-table me-2"></i>เพิ่มรายการใหม่</h5>
+                <button type="button" className="btn-close btn-close-white" onClick={() => setShowAddModal(false)}></button>
+              </div>
+              <div className="modal-body p-0">
+                <table className="table table-bordered mb-0">
+                    <thead className="table-light">
+                        <tr>
+                            <th width="50">#</th>
+                            <th width="20%">รหัส *</th>
+                            <th width="30%">ชื่อครุภัณฑ์ *</th>
+                            <th width="20%">หมวดหมู่</th>
+                            <th>รายละเอียด</th>
+                            <th width="50"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {newItems.map((item, idx) => (
+                            <tr key={item.id}>
+                                <td className="text-center align-middle">{idx + 1}</td>
+                                <td>
+                                    <input className="form-control form-control-sm" placeholder="รหัส" value={item.code} onChange={e => handleNewItemChange(item.id, 'code', e.target.value)} />
+                                </td>
+                                <td>
+                                    <input className="form-control form-control-sm" placeholder="ชื่อ" value={item.name} onChange={e => handleNewItemChange(item.id, 'name', e.target.value)} />
+                                </td>
+                                <td>
+                                    <select className="form-select form-select-sm" value={item.category} onChange={e => handleNewItemChange(item.id, 'category', e.target.value)}>
+                                        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                    </select>
+                                </td>
+                                <td>
+                                    <input className="form-control form-control-sm" placeholder="รายละเอียด" value={item.detail} onChange={e => handleNewItemChange(item.id, 'detail', e.target.value)} />
+                                </td>
+                                <td className="text-center align-middle">
+                                    {newItems.length > 1 && (
+                                        <button className="btn btn-outline-danger btn-sm border-0" onClick={() => handleRemoveNewRow(item.id)}><i className="bi bi-x-lg"></i></button>
+                                    )}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+                <div className="p-3 bg-light border-top">
+                    <button className="btn btn-outline-primary btn-sm dashed-border w-100" onClick={handleAddNewRow}>
+                        <i className="bi bi-plus-lg me-1"></i> เพิ่มแถว
+                    </button>
                 </div>
-                <div className="modal-body">
-                  <div className="mb-3">
-                    <label className="form-label">รหัสครุภัณฑ์</label>
-                    <input required className="form-control" autoFocus 
-                      value={currentItem.code} onChange={e => setCurrentItem({...currentItem, code: e.target.value})} />
-                  </div>
-                  <div className="mb-3">
-                    <label className="form-label">ชื่อครุภัณฑ์</label>
-                    <input required className="form-control" 
-                      value={currentItem.name} onChange={e => setCurrentItem({...currentItem, name: e.target.value})} />
-                  </div>
-                  <div className="mb-3">
-                    <label className="form-label">หมวดหมู่</label>
-                    <select className="form-select" 
-                      value={currentItem.category} onChange={e => setCurrentItem({...currentItem, category: e.target.value})}>
-                      {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-                  <div className="mb-3">
-                    <label className="form-label">รายละเอียด</label>
-                    <textarea className="form-control" rows="2"
-                      value={currentItem.detail} onChange={e => setCurrentItem({...currentItem, detail: e.target.value})}></textarea>
-                  </div>
-                </div>
-                <div className="modal-footer bg-light">
-                  <small className="text-muted me-auto">*กดบันทึกเพื่อเพิ่มรายการถัดไปทันที</small>
-                  <button type="submit" className="btn btn-primary px-4">บันทึก</button>
-                </div>
-              </form>
+              </div>
+              <div className="modal-footer">
+                <button className="btn btn-secondary" onClick={() => setShowAddModal(false)}>ยกเลิก</button>
+                <button className="btn btn-primary px-4" onClick={saveBatchAdd}>บันทึกทั้งหมด</button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
       {/* --- HISTORY MODAL --- */}
-      {showHistoryModal && (
+      {showHistoryModal && currentItem && (
         <div className="modal fade show d-block" style={{background:'rgba(0,0,0,0.5)'}}>
           <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-            <div className="modal-content">
-              <div className="modal-header bg-info text-white">
-                <h5 className="modal-title"><i className="bi bi-clock-history"></i> ประวัติ: {currentItem.code}</h5>
+            <div className="modal-content border-0 shadow">
+              <div className="modal-header bg-primary text-white">
+                <h5 className="modal-title"><i className="bi bi-clock-history me-2"></i>ประวัติครุภัณฑ์</h5>
                 <button type="button" className="btn-close btn-close-white" onClick={()=>setShowHistoryModal(false)}></button>
               </div>
               <div className="modal-body bg-light">
-                <div className="alert alert-light border shadow-sm mb-3 d-flex justify-content-between">
-                    <span><strong>ชื่อ:</strong> {currentItem.name}</span>
-                    <span><strong>หมวด:</strong> {currentItem.category}</span>
-                </div>
-                <table className="table table-striped bg-white border">
-                    <thead className="table-primary"><tr><th>วัน/เวลา</th><th>สถานะ</th><th>ที่เก็บ/ผู้รับผิดชอบ</th><th>หมายเหตุ</th></tr></thead>
-                    <tbody>
-                        {historyLoading ? <tr><td colSpan="4" className="text-center">Loading...</td></tr> :
-                         historyLogs.length === 0 ? <tr><td colSpan="4" className="text-center text-muted">ไม่พบประวัติ</td></tr> :
-                         historyLogs.map((log, i) => (
-                            <tr key={i}>
-                                <td>{new Date(log[5]).toLocaleDateString('th-TH')} {log[6] && String(log[6]).substring(0,5)}</td>
-                                <td>{log[3]}</td>
-                                <td>{log[2]}</td>
-                                <td>{log[4]}</td>
-                            </tr>
-                         ))}
-                    </tbody>
-                </table>
+                 {/* Header Info */}
+                 <div className="d-flex justify-content-between align-items-center bg-white p-3 rounded shadow-sm mb-3 border-start border-4 border-primary">
+                    <div>
+                        <div className="text-muted small">รหัส: {currentItem.code}</div>
+                        <div className="fw-bold fs-5">{currentItem.name}</div>
+                    </div>
+                    <div className="text-end">
+                        <span className="badge bg-info text-dark mb-1">{currentItem.category}</span>
+                        <div className="small text-muted">{currentItem.status}</div>
+                    </div>
+                 </div>
+
+                 {/* Timeline / Table */}
+                 <h6 className="text-muted ms-1 mb-2">บันทึกการตรวจสอบ</h6>
+                 <div className="card border-0 shadow-sm">
+                    <table className="table table-striped mb-0">
+                        <thead className="table-light">
+                            <tr><th>วัน/เวลา</th><th>สถานะ</th><th>ที่เก็บ</th><th>หมายเหตุ</th></tr>
+                        </thead>
+                        <tbody>
+                            {historyLoading ? <tr><td colSpan="4" className="text-center py-3">กำลังโหลด...</td></tr> :
+                             historyLogs.length === 0 ? <tr><td colSpan="4" className="text-center py-3 text-muted">ไม่พบประวัติ</td></tr> :
+                             historyLogs.map((log, i) => (
+                                <tr key={i}>
+                                    <td>{new Date(log[5]).toLocaleDateString('th-TH')} <span className="text-muted small">{log[6] && String(log[6]).substring(0,5)}</span></td>
+                                    <td><span className="badge bg-secondary">{log[3]}</span></td>
+                                    <td>{log[2]}</td>
+                                    <td>{log[4]}</td>
+                                </tr>
+                             ))}
+                        </tbody>
+                    </table>
+                 </div>
               </div>
             </div>
           </div>
         </div>
       )}
 
+      <style>{`
+        .table-row-hover:hover {
+            background-color: #f8f9fa !important;
+            box-shadow: inset 0 0 0 9999px rgba(0,0,0,0.02);
+        }
+        .dashed-border {
+            border-style: dashed !important;
+        }
+      `}</style>
     </div>
   );
 };
