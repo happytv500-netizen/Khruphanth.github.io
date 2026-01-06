@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Swal from 'sweetalert2';
-import { fetchSheetData, postAction } from '../services/api';
-import { SHEET_NAMES } from '../config/config';
+import { fetchSheetData, postAction } from '../../services/api';
+import { SHEET_NAMES } from '../../config/config';
 
 // ตัวเลือกหมวดหมู่ (ปรับแก้ได้ตามจริง)
 const CATEGORIES = ["-", "เครื่องใช้ไฟฟ้า", "พัดลม", "เครื่องปรับอากาศ", "เฟอร์นิเจอร์", "อุปกรณ์คอมพิวเตอร์", "สื่อการสอน", "อื่นๆ"];
