@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import { fetchSheetData, postAction } from '../services/api';
-import { SHEET_NAMES } from '../config/config';
+import { fetchSheetData, postAction } from '../../services/api';
+import { SHEET_NAMES } from '../../config/config';
 
 const UserTable = () => {
   const [data, setData] = useState([]);

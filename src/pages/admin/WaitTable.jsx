@@ -8,7 +8,7 @@ const WaitTable = () => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const LOCATIONS = ["-", "ห้องพักครู", "ห้องเรียน 1", "ห้องเรียน 2", "ห้องเรียน 3", "ห้องคอม", "501", "502"];
+  const LOCATIONS = ["-", "501", "502", "503", "401", "401A", "401B", "401C", "402", "403", "404", "405", "ห้องพักครู", "301", "302"];
   const STATUS_OPTIONS = ["-", "ใช้งานได้", "ชำรุด", "ส่งซ่อม", "เสื่อมสภาพ"];
 
   const loadWait = async () => {

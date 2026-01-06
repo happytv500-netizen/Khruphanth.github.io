@@ -18,7 +18,7 @@ const AdminDashboard = () => {
     { id: 'dash', label: 'แผงควบคุม', icon: 'speedometer2' },
     { id: 'wait', label: 'รอตรวจสอบ', icon: 'clock-history' },
     { id: 'list', label: 'ฐานข้อมูล', icon: 'archive' },
-    { id: 'report', label: 'ประวัติ', icon: 'search' },
+    { id: 'report', label: 'ออกรายงาน', icon: 'search' },
     { id: 'user', label: 'สมาชิก', icon: 'people' },
   ];
 
