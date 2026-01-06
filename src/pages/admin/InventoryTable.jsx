@@ -44,28 +44,28 @@ const InventoryTable = () => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // --- UI Modes ---
-  const [mode, setMode] = useState('view'); // 'view' | 'edit' | 'delete'
+  // Modes: 'view' (ดูปกติ), 'edit' (แก้ทุกแถว), 'delete' (เลือกเพื่อลบ)
+  const [mode, setMode] = useState('view');
 
-  // --- Modals ---
+  // Modals
   const [showAddModal, setShowAddModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   
-  // --- Data States ---
-  const [newItems, setNewItems] = useState([{ id: 1, code: '', name: '', category: '-', detail: '' }]);
+  // Data States
+  const [newItems, setNewItems] = useState([{ id: 1, code: '', name: '', category: '-' }]); // ตัด detail ออก
   const [currentItem, setCurrentItem] = useState(null);
   const [historyLogs, setHistoryLogs] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  // --- Table Filters ---
+  // Table Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: 'no', direction: 'asc' });
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(20);
 
-  // --- Action States ---
-  const [selectedRows, setSelectedRows] = useState(new Set()); // สำหรับโหมดลบ
-  const [editBuffer, setEditBuffer] = useState({}); // สำหรับโหมดแก้ไข
+  // Action States
+  const [selectedRows, setSelectedRows] = useState(new Set()); 
+  const [editBuffer, setEditBuffer] = useState({}); 
 
   // ================= LOAD =================
   const loadList = async () => {
@@ -131,10 +131,11 @@ const InventoryTable = () => {
     const updatedItems = newItems.map(item => item.id === id ? { ...item, [field]: value } : item);
     setNewItems(updatedItems);
 
-    // Auto Add Row Logic: ถ้ากรอกแถวสุดท้ายครบ (รหัส+ชื่อ+หมวด) ให้เติมแถวใหม่
+    // Auto Add Row: ถ้ากรอกแถวสุดท้ายครบ (รหัส+ชื่อ+หมวด) ให้เติมแถวใหม่ทันที
     const lastItem = updatedItems[updatedItems.length - 1];
     if (lastItem.id === id && lastItem.code && lastItem.name && lastItem.category !== '-') {
-        setNewItems([...updatedItems, { id: Date.now(), code: '', name: '', category: '-', detail: '' }]);
+        // เพิ่มแถวใหม่ (ไม่มี detail)
+        setNewItems([...updatedItems, { id: Date.now(), code: '', name: '', category: '-' }]);
     }
   };
 
@@ -151,21 +152,21 @@ const InventoryTable = () => {
 
     let count = 0;
     for (const item of validItems) {
-        Swal.update({ html: `บันทึกรายการ: ${item.code}` });
+        Swal.update({ html: `กำลังเพิ่มรายการ: ${item.code}` });
         await postAction("DATA", "add", {
             "รหัส": item.code, "ชื่อ": item.name, "ที่อยู่": item.category,
-            "สถานะ": "ใช้งานได้", "รายละเอียด": item.detail || "-"
+            "สถานะ": "ใช้งานได้", "รายละเอียด": "-" // ส่ง - ไปแทน
         });
         count++;
     }
     Swal.fire('สำเร็จ', `เพิ่ม ${count} รายการเรียบร้อย`, 'success');
-    setNewItems([{ id: Date.now(), code: '', name: '', category: '-', detail: '' }]);
+    setNewItems([{ id: Date.now(), code: '', name: '', category: '-' }]); // Reset
     loadList();
   };
 
   // ================= HANDLERS: EDIT MODE =================
   const enterEditMode = () => {
-    // เตรียม buffer ให้พร้อมสำหรับทุกรายการในหน้าปัจจุบัน
+    // โหลดข้อมูล "ทุกแถวในหน้าปัจจุบัน" เข้า Buffer เพื่อรอแก้ไข
     const buffer = {};
     currentItems.forEach(item => { buffer[item.row] = { ...item }; });
     setEditBuffer(buffer);
@@ -173,18 +174,28 @@ const InventoryTable = () => {
   };
 
   const handleEditChange = (rowId, field, value) => {
-    setEditBuffer(prev => ({ ...prev, [rowId]: { ...prev[rowId], [field]: value } }));
+    setEditBuffer(prev => ({ 
+        ...prev, 
+        [rowId]: { ...prev[rowId], [field]: value } // อัปเดตค่าใน Buffer
+    }));
   };
 
   const saveBulkEdit = async () => {
-    Swal.fire({ title: 'กำลังบันทึกการแก้ไข...', didOpen: () => Swal.showLoading() });
-    const rows = Object.keys(editBuffer);
-    for (const rowId of rows) {
+    const rowsToUpdate = Object.keys(editBuffer);
+    if (rowsToUpdate.length === 0) return resetModes();
+
+    Swal.fire({ title: `กำลังบันทึก ${rowsToUpdate.length} รายการ...`, didOpen: () => Swal.showLoading() });
+    
+    for (const rowId of rowsToUpdate) {
         const item = editBuffer[rowId];
-        // เช็คว่ามีการเปลี่ยนแปลงหรือไม่ (optional)
+        // ส่งข้อมูลทั้งหมด (ทั้งที่แก้และไม่ได้แก้) กลับไป
         await postAction("DATA", "edit", {
-            row: rowId, "รหัส": item.code, "ชื่อ": item.name,
-            "ที่อยู่": item.category, "สถานะ": item.status, "รายละเอียด": item.detail
+            row: rowId, 
+            "รหัส": item.code, 
+            "ชื่อ": item.name,
+            "ที่อยู่": item.category, 
+            "สถานะ": item.status, 
+            "รายละเอียด": item.detail
         });
     }
     Swal.fire('บันทึกเรียบร้อย', '', 'success');
@@ -239,7 +250,7 @@ const InventoryTable = () => {
           
           <div className="d-flex align-items-center gap-2">
              
-             {/* Search (ซ่อนตอนแก้ไข/ลบ เพื่อไม่ให้งง) */}
+             {/* Search (ซ่อนตอนแก้ไข/ลบ) */}
              {mode === 'view' && (
                 <div className="input-group input-group-sm" style={{width: '200px'}}>
                     <span className="input-group-text bg-light"><i className="bi bi-search"></i></span>
@@ -314,7 +325,8 @@ const InventoryTable = () => {
             {currentItems.length === 0 ? (
                <tr><td colSpan="7" className="text-center py-5 text-muted">ไม่พบข้อมูล</td></tr>
             ) : currentItems.map((item, i) => {
-              const buffer = mode === 'edit' ? editBuffer[item.row] || item : item;
+              // ในโหมดแก้ไข ใช้ข้อมูลจาก Buffer แทน
+              const buffer = mode === 'edit' ? (editBuffer[item.row] || item) : item;
 
               return (
                 <tr 
@@ -387,7 +399,7 @@ const InventoryTable = () => {
         </div>
       </div>
 
-      {/* --- ADD BATCH MODAL --- */}
+      {/* --- ADD BATCH MODAL (No Detail Column) --- */}
       {showAddModal && (
         <div className="modal fade show d-block" style={{background:'rgba(0,0,0,0.5)'}}>
           <div className="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
@@ -399,7 +411,8 @@ const InventoryTable = () => {
               <div className="modal-body p-0">
                 <table className="table table-bordered mb-0">
                     <thead className="table-light">
-                        <tr><th width="50">#</th><th width="20%">รหัส *</th><th width="30%">ชื่อครุภัณฑ์ *</th><th width="20%">หมวดหมู่</th><th>รายละเอียด</th><th width="50"></th></tr>
+                        {/* ตัดคอลัมน์รายละเอียดออก */}
+                        <tr><th width="50">#</th><th width="25%">รหัส *</th><th width="40%">ชื่อครุภัณฑ์ *</th><th width="25%">หมวดหมู่</th><th width="50"></th></tr>
                     </thead>
                     <tbody>
                         {newItems.map((item, idx) => (
@@ -408,11 +421,7 @@ const InventoryTable = () => {
                                 <td><input className="form-control form-control-sm" placeholder="รหัส" value={item.code} onChange={e => handleNewItemChange(item.id, 'code', e.target.value)} /></td>
                                 <td><input className="form-control form-control-sm" placeholder="ชื่อ" value={item.name} onChange={e => handleNewItemChange(item.id, 'name', e.target.value)} /></td>
                                 <td><select className="form-select form-select-sm" value={item.category} onChange={e => handleNewItemChange(item.id, 'category', e.target.value)}>{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></td>
-                                <td><input className="form-control form-control-sm" placeholder="รายละเอียด" value={item.detail} onChange={e => handleNewItemChange(item.id, 'detail', e.target.value)} /></td>
-                                <td className="text-center align-middle">
-                                    {/* ปุ่มลบแถว */}
-                                    {newItems.length > 1 && (<button className="btn btn-outline-danger btn-sm border-0" onClick={() => handleRemoveNewRow(item.id)}><i className="bi bi-x-lg"></i></button>)}
-                                </td>
+                                <td className="text-center align-middle">{newItems.length > 1 && (<button className="btn btn-outline-danger btn-sm border-0" onClick={() => handleRemoveNewRow(item.id)}><i className="bi bi-x-lg"></i></button>)}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -428,7 +437,7 @@ const InventoryTable = () => {
         </div>
       )}
 
-      {/* --- HISTORY MODAL (Keep same as before) --- */}
+      {/* --- HISTORY MODAL (View Only) --- */}
       {showHistoryModal && currentItem && (
         <div className="modal fade show d-block" style={{background:'rgba(0,0,0,0.5)'}}>
           <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
