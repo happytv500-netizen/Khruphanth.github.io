@@ -16,9 +16,9 @@ const WaitTable = () => {
     setLoading(true);
     try {
       const rows = await fetchSheetData(SHEET_NAMES.WAIT || "WAIT");
-      // กรองแถวว่าง (เช็คว่าต้องมีรหัส r[0])
+      // กรองแถวที่ว่างจริงๆ ออก (เช็คจาก r[0] หรือรหัส)
       const mapped = rows
-        .filter(r => r[0] && String(r[0]).trim() !== "")
+        .filter(r => r[0] && String(r[0]).trim() !== "") 
         .map((r, i) => ({
           row: i + 2,
           code: r[0], 
@@ -45,7 +45,6 @@ const WaitTable = () => {
     newData[index][field] = value;
     setData(newData);
 
-    // ติ๊กถูกอัตโนมัติเมื่อมีการเปลี่ยนแปลงข้อมูล
     const rowId = newData[index].row;
     if (!selectedRows.has(rowId)) {
       setSelectedRows(prev => {
@@ -64,7 +63,7 @@ const WaitTable = () => {
 
   const handleApprove = async () => {
     const itemsToApprove = data.filter(item => selectedRows.has(item.row));
-    if (itemsToApprove.length === 0) return Swal.fire('เตือน', 'กรุณาเลือกรายการ', 'warning');
+    if (itemsToApprove.length === 0) return;
     
     const invalid = itemsToApprove.find(i => i.location === "-" || i.status === "-");
     if (invalid) return Swal.fire('ข้อมูลไม่ครบ', `รหัส ${invalid.code} ยังไม่ได้เลือกที่อยู่หรือสถานะ`, 'warning');
@@ -78,7 +77,7 @@ const WaitTable = () => {
         });
         await postAction("WAIT", "delete", { row: item.row });
       }
-      Swal.fire('สำเร็จ', `อนุมัติ ${itemsToApprove.length} รายการเรียบร้อย`, 'success');
+      Swal.fire('สำเร็จ', `อนุมัติเรียบร้อย`, 'success');
       loadWait();
     } catch (e) {
       Swal.fire('Error', 'บันทึกไม่สำเร็จ', 'error');
@@ -118,6 +117,7 @@ const WaitTable = () => {
             {loading ? (
               <tr><td colSpan="8" className="text-center p-4">กำลังโหลด...</td></tr>
             ) : data.length === 0 ? (
+              /* 🔥 ส่วนสำคัญ: ถ้าไม่มีข้อมูล จะไม่โชว์ Input เลย แต่โชว์ข้อความแทน */
               <tr>
                 <td colSpan="8" className="text-center py-5 text-muted">
                   <i className="bi bi-inbox fs-1 d-block mb-2"></i>
@@ -125,6 +125,7 @@ const WaitTable = () => {
                 </td>
               </tr>
             ) : (
+              /* แสดงแถวข้อมูลจริงเท่านั้น */
               data.map((item, idx) => (
                 <tr key={idx} onClick={() => toggleSelect(item.row)} style={{cursor: 'pointer'}}>
                   <td onClick={e => e.stopPropagation()}>
