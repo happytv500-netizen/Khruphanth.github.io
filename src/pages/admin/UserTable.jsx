@@ -8,6 +8,9 @@ const UserTable = () => {
   const [loading, setLoading] = useState(false);
   const [selectedRows, setSelectedRows] = useState(new Set());
   
+  // จำลองข้อมูลผู้ใช้ที่กำลังใช้งานระบบ (ควรดึงจาก Auth State ของคุณ)
+  const loggedInUser = JSON.parse(localStorage.getItem('user')) || { role: 'admin' }; 
+
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState('add');
   const [currentUser, setCurrentUser] = useState({ id: '', pass: '', name: '', role: 'user' });
@@ -17,12 +20,12 @@ const UserTable = () => {
     try {
       const rows = await fetchSheetData(SHEET_NAMES.LOGIN || "LOGIN");
       const mapped = rows
-        .filter(r => r[0] && String(r[0]).trim() !== "") // กรองแถวว่าง
+        .filter(r => r[0] && String(r[0]).trim() !== "")
         .map((r, i) => ({ 
           row: i + 2, 
           id: r[0], 
           pass: r[1], 
-          role: r[2],
+          role: r[2] ? r[2].toLowerCase() : 'user',
           name: r[3] 
         }));
       setData(mapped);
@@ -33,22 +36,30 @@ const UserTable = () => {
 
   useEffect(() => { loadUsers(); }, []);
 
-  const toggleSelect = (rowId) => {
+  // เช็คสิทธิ์การจัดการ (Admin แก้ได้แค่ User / SAdmin แก้ได้หมด)
+  const canManage = (targetRole) => {
+    if (loggedInUser.role === 'sadmin') return true;
+    if (loggedInUser.role === 'admin') return targetRole === 'user';
+    return false;
+  };
+
+  const toggleSelect = (u) => {
+    if (!canManage(u.role)) return;
     const newSet = new Set(selectedRows);
-    if (newSet.has(rowId)) newSet.delete(rowId); else newSet.add(rowId);
+    if (newSet.has(u.row)) newSet.delete(u.row); else newSet.add(u.row);
     setSelectedRows(newSet);
   };
 
   const handleBulkDelete = async () => {
     if (selectedRows.size === 0) return;
-    const res = await Swal.fire({ title: `ลบ ${selectedRows.size} รายการที่เลือก?`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33' });
+    const res = await Swal.fire({ title: `ลบสมาชิกที่เลือก ${selectedRows.size} รายการ?`, icon: 'warning', showCancelButton: true });
     if (res.isConfirmed) {
       Swal.fire({ title: 'กำลังลบ...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
       const sortedRows = Array.from(selectedRows).sort((a, b) => b - a);
       for (const row of sortedRows) {
         await postAction("LOGIN", "delete", { row });
       }
-      Swal.fire('สำเร็จ', 'ลบรายการที่เลือกแล้ว', 'success');
+      Swal.fire('สำเร็จ', '', 'success');
       loadUsers();
     }
   };
@@ -70,15 +81,8 @@ const UserTable = () => {
     } else {
         await postAction("LOGIN", "edit", { ...payload, row: currentUser.row });
     }
-
     Swal.fire('สำเร็จ', '', 'success');
     loadUsers();
-  };
-
-  const openEdit = (u) => {
-    setCurrentUser(u);
-    setModalMode('edit');
-    setShowModal(true);
   };
 
   return (
@@ -96,34 +100,38 @@ const UserTable = () => {
           <thead className="table-light">
             <tr>
               <th width="40"><i className="bi bi-check2-square"></i></th>
-              <th width="20%">ID (Username)</th>
+              <th width="20%">ID</th>
               <th width="20%">Password</th>
-              <th width="25%">Name (ชื่อ-สกุล)</th>
-              <th width="15%">Role (สิทธิ์)</th>
+              <th width="25%">Name</th>
+              <th width="15%">Role</th>
               <th width="10%" className="text-center">จัดการ</th>
             </tr>
           </thead>
           <tbody>
             {loading ? <tr><td colSpan="6" className="text-center p-4">กำลังโหลด...</td></tr> :
-             data.map((u, i) => (
-              <tr key={i} onClick={() => toggleSelect(u.row)} style={{cursor:'pointer'}}>
-                <td onClick={e => e.stopPropagation()}>
-                    <input type="checkbox" className="form-check-input" checked={selectedRows.has(u.row)} onChange={() => toggleSelect(u.row)} />
-                </td>
-                <td className="fw-bold text-primary">{u.id}</td>
-                <td className="text-muted">{u.pass}</td>
-                <td>{u.name}</td>
-                <td><span className={`badge rounded-pill ${u.role==='admin'?'bg-danger':'bg-info text-dark'}`}>{u.role}</span></td>
-                <td className="text-center" onClick={e => e.stopPropagation()}>
-                    <button className="btn btn-warning btn-sm text-dark me-1" onClick={() => openEdit(u)}><i className="bi bi-pencil"></i></button>
-                </td>
-              </tr>
-            ))}
+             data.map((u, i) => {
+              const isManageable = canManage(u.role);
+              return (
+                <tr key={i} onClick={() => isManageable && toggleSelect(u)} style={{opacity: isManageable ? 1 : 0.5}}>
+                  <td onClick={e => e.stopPropagation()}>
+                      <input type="checkbox" className="form-check-input" disabled={!isManageable} checked={selectedRows.has(u.row)} onChange={() => toggleSelect(u)} />
+                  </td>
+                  <td className="fw-bold text-primary">{u.id}</td>
+                  <td className="text-muted">{u.pass}</td>
+                  <td>{u.name}</td>
+                  <td>
+                    <span className={`badge rounded-pill ${u.role==='sadmin'?'bg-dark':u.role==='admin'?'bg-danger':'bg-info text-dark'}`}>{u.role}</span>
+                  </td>
+                  <td className="text-center" onClick={e => e.stopPropagation()}>
+                      <button className="btn btn-warning btn-sm" disabled={!isManageable} onClick={() => { setCurrentUser(u); setModalMode('edit'); setShowModal(true); }}><i className="bi bi-pencil"></i></button>
+                  </td>
+                </tr>
+              )
+             })}
           </tbody>
         </table>
       </div>
 
-      {/* Modal Add/Edit โค้ดส่วนเดิมคงไว้ */}
       {showModal && (
         <div className="modal fade show d-block" style={{background: 'rgba(0,0,0,0.5)'}}>
             <div className="modal-dialog modal-dialog-centered">
@@ -131,23 +139,25 @@ const UserTable = () => {
                     <div className="modal-header"><h5 className="modal-title">{modalMode==='add'?'เพิ่มสมาชิก':'แก้ไขสมาชิก'}</h5></div>
                     <form onSubmit={handleSave}>
                         <div className="modal-body">
-                            <div className="mb-3">
-                                <label className="form-label">Username (ID)</label>
-                                <input required className="form-control" value={currentUser.id} onChange={e=>setCurrentUser({...currentUser, id:e.target.value})} />
-                            </div>
-                            <div className="mb-3">
-                                <label className="form-label">Password</label>
-                                <input required type="text" className="form-control" value={currentUser.pass} onChange={e=>setCurrentUser({...currentUser, pass:e.target.value})}/>
-                            </div>
-                            <div className="mb-3">
-                                <label className="form-label">Name (ชื่อ-สกุล)</label>
-                                <input required className="form-control" value={currentUser.name} onChange={e=>setCurrentUser({...currentUser, name:e.target.value})}/>
-                            </div>
+                            <div className="mb-3"><label className="form-label">Username (ID)</label><input required className="form-control" value={currentUser.id} onChange={e=>setCurrentUser({...currentUser, id:e.target.value})} /></div>
+                            <div className="mb-3"><label className="form-label">Password</label><input required type="text" className="form-control" value={currentUser.pass} onChange={e=>setCurrentUser({...currentUser, pass:e.target.value})}/></div>
+                            <div className="mb-3"><label className="form-label">Name</label><input required className="form-control" value={currentUser.name} onChange={e=>setCurrentUser({...currentUser, name:e.target.value})}/></div>
                             <div className="mb-3">
                                 <label className="form-label">Role (สิทธิ์)</label>
-                                <select className="form-select" value={currentUser.role} onChange={e=>setCurrentUser({...currentUser, role:e.target.value})}>
+                                <select 
+                                  className="form-select" 
+                                  value={currentUser.role} 
+                                  onChange={e=>setCurrentUser({...currentUser, role:e.target.value})}
+                                >
                                     <option value="user">User</option>
-                                    <option value="admin">Admin</option>
+                                    
+                                    {/* 🔥 บล็อกสิทธิ์: Admin จะไม่เห็นตัวเลือก Admin (เลือกได้แค่ User) */}
+                                    {(loggedInUser.role === 'sadmin' || (loggedInUser.role === 'admin' && currentUser.role === 'admin')) && (
+                                        <option value="admin">Admin</option>
+                                    )}
+                                    
+                                    {/* SAdmin เห็นเฉพาะตอนแก้คนที่เป็น SAdmin อยู่แล้ว */}
+                                    {currentUser.role === 'sadmin' && <option value="sadmin">SAdmin</option>}
                                 </select>
                             </div>
                         </div>
