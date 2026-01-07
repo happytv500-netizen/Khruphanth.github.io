@@ -23,8 +23,9 @@ const Login = () => {
         timer: 1500,
         showConfirmButton: false
       }).then(() => {
-        const userRole = res.user.role.toLowerCase(); 
-        // เช็คสิทธิ์ admin หรือ sadmin เพื่อไปหน้า /admin
+        // ใช้ .trim() เพื่อตัดช่องว่าง และ .toLowerCase() เพื่อให้เปรียบเทียบค่าได้แม่นยำ
+        const userRole = res.user.role.trim().toLowerCase();
+        
         if (userRole === 'admin' || userRole === 'sadmin') {
           navigate('/admin');
         } else {
