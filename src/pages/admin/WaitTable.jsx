@@ -16,9 +16,10 @@ const WaitTable = () => {
     setLoading(true);
     try {
       const rows = await fetchSheetData(SHEET_NAMES.WAIT || "WAIT");
-      // กรองแถวที่ว่างจริงๆ ออก (เช็คจาก r[0] หรือรหัส)
+      
+      // กรองเฉพาะแถวที่มีข้อมูลรหัส (r[0]) และรหัสต้องไม่เป็นค่าว่างจริง ๆ
       const mapped = rows
-        .filter(r => r[0] && String(r[0]).trim() !== "") 
+        .filter(r => r && r[0] && String(r[0]).trim() !== "" && String(r[0]) !== "null")
         .map((r, i) => ({
           row: i + 2,
           code: r[0], 
@@ -29,6 +30,7 @@ const WaitTable = () => {
           date: r[5], 
           time: r[6]
         }));
+        
       setData(mapped);
       setSelectedRows(new Set());
     } catch (e) {
@@ -93,7 +95,7 @@ const WaitTable = () => {
   return (
     <div className="card border-0 shadow-sm rounded-4">
       <div className="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-        <h5 className="fw-bold text-primary m-0">รายการรอตรวจสอบ ({selectedRows.size})</h5>
+        <h5 className="fw-bold text-primary m-0">รายการรอตรวจสอบ ({data.length})</h5>
         <div className="btn-group btn-group-sm">
           <button className="btn btn-outline-secondary" onClick={loadWait}><i className="bi bi-arrow-clockwise"></i> รีเฟรช</button>
           <button className="btn btn-success" onClick={handleApprove} disabled={selectedRows.size === 0}><i className="bi bi-check-lg"></i> อนุมัติที่เลือก</button>
@@ -117,7 +119,7 @@ const WaitTable = () => {
             {loading ? (
               <tr><td colSpan="8" className="text-center p-4">กำลังโหลด...</td></tr>
             ) : data.length === 0 ? (
-              /* 🔥 ส่วนสำคัญ: ถ้าไม่มีข้อมูล จะไม่โชว์ Input เลย แต่โชว์ข้อความแทน */
+              /* 🔥 ส่วนสำคัญ: ถ้า data ว่างจริง ๆ หลัง filter แล้ว ให้โชว์ข้อความนี้ */
               <tr>
                 <td colSpan="8" className="text-center py-5 text-muted">
                   <i className="bi bi-inbox fs-1 d-block mb-2"></i>
@@ -125,7 +127,6 @@ const WaitTable = () => {
                 </td>
               </tr>
             ) : (
-              /* แสดงแถวข้อมูลจริงเท่านั้น */
               data.map((item, idx) => (
                 <tr key={idx} onClick={() => toggleSelect(item.row)} style={{cursor: 'pointer'}}>
                   <td onClick={e => e.stopPropagation()}>
