@@ -17,25 +17,16 @@ const WaitTable = () => {
     try {
       const rows = await fetchSheetData(SHEET_NAMES.WAIT || "WAIT");
 
-      // ✅ กรองแบบเอาให้ตาย: ไม่มีรหัส = ไม่เกิดแถว
-      const mapped = rows
-        .filter(r =>
-          Array.isArray(r) &&
-          r[0] !== undefined &&
-          r[0] !== null &&
-          String(r[0]).trim() !== "" &&
-          String(r[0]).toLowerCase() !== "null"
-        )
-        .map((r, i) => ({
-          row: i + 2,
-          code: String(r[0]).trim(),
-          name: r[1] || "",
-          location: "-",
-          status: "-",
-          note: r[4] || "",
-          date: r[5],
-          time: r[6]
-        }));
+      const mapped = rows.map((r, i) => ({
+        row: i + 2,
+        code: r?.[0] ? String(r[0]).trim() : "",
+        name: r?.[1] || "",
+        location: "-",
+        status: "-",
+        note: r?.[4] || "",
+        date: r?.[5],
+        time: r?.[6]
+      }));
 
       setData(mapped);
       setSelectedRows(new Set());
@@ -46,7 +37,9 @@ const WaitTable = () => {
     setLoading(false);
   };
 
-  useEffect(() => { loadWait(); }, []);
+  useEffect(() => {
+    loadWait();
+  }, []);
 
   const handleChange = (index, field, value) => {
     const newData = [...data];
@@ -54,13 +47,7 @@ const WaitTable = () => {
     setData(newData);
 
     const rowId = newData[index].row;
-    if (!selectedRows.has(rowId)) {
-      setSelectedRows(prev => {
-        const newSet = new Set(prev);
-        newSet.add(rowId);
-        return newSet;
-      });
-    }
+    setSelectedRows(prev => new Set(prev).add(rowId));
   };
 
   const toggleSelect = (rowId) => {
@@ -70,17 +57,24 @@ const WaitTable = () => {
   };
 
   const handleApprove = async () => {
-    const itemsToApprove = data.filter(item => selectedRows.has(item.row));
-    if (itemsToApprove.length === 0) return;
+    const validRows = data.filter(
+      item =>
+        item.code &&
+        String(item.code).trim() !== "" &&
+        selectedRows.has(item.row)
+    );
 
-    const invalid = itemsToApprove.find(i => i.location === "-" || i.status === "-");
+    if (validRows.length === 0) return;
+
+    const invalid = validRows.find(i => i.location === "-" || i.status === "-");
     if (invalid) {
       return Swal.fire('ข้อมูลไม่ครบ', `รหัส ${invalid.code} ยังไม่ได้เลือกที่อยู่หรือสถานะ`, 'warning');
     }
 
     Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
     try {
-      for (const item of itemsToApprove) {
+      for (const item of validRows) {
         await postAction("LOG", "addLog", {
           "รหัส": item.code,
           "ชื่อ": item.name,
@@ -90,7 +84,7 @@ const WaitTable = () => {
         });
         await postAction("WAIT", "delete", { row: item.row });
       }
-      Swal.fire('สำเร็จ', `อนุมัติเรียบร้อย`, 'success');
+      Swal.fire('สำเร็จ', 'อนุมัติเรียบร้อย', 'success');
       loadWait();
     } catch (e) {
       Swal.fire('Error', 'บันทึกไม่สำเร็จ', 'error');
@@ -103,15 +97,24 @@ const WaitTable = () => {
     return val;
   };
 
+  // 🔥 กันผีขั้นสุด
+  const visibleData = data.filter(item => item.code && String(item.code).trim() !== "");
+
   return (
     <div className="card border-0 shadow-sm rounded-4">
       <div className="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-        <h5 className="fw-bold text-primary m-0">รายการรอตรวจสอบ ({data.length})</h5>
+        <h5 className="fw-bold text-primary m-0">
+          รายการรอตรวจสอบ ({visibleData.length})
+        </h5>
         <div className="btn-group btn-group-sm">
           <button className="btn btn-outline-secondary" onClick={loadWait}>
             <i className="bi bi-arrow-clockwise"></i> รีเฟรช
           </button>
-          <button className="btn btn-success" onClick={handleApprove} disabled={selectedRows.size === 0}>
+          <button
+            className="btn btn-success"
+            onClick={handleApprove}
+            disabled={selectedRows.size === 0}
+          >
             <i className="bi bi-check-lg"></i> อนุมัติที่เลือก
           </button>
         </div>
@@ -131,12 +134,13 @@ const WaitTable = () => {
               <th>เวลา</th>
             </tr>
           </thead>
+
           <tbody>
             {loading ? (
               <tr>
                 <td colSpan="8" className="text-center p-4">กำลังโหลด...</td>
               </tr>
-            ) : data.length === 0 ? (
+            ) : visibleData.length === 0 ? (
               <tr>
                 <td colSpan="8" className="text-center py-5 text-muted">
                   <i className="bi bi-inbox fs-1 d-block mb-2"></i>
@@ -144,8 +148,12 @@ const WaitTable = () => {
                 </td>
               </tr>
             ) : (
-              data.map((item, idx) => (
-                <tr key={item.row} onClick={() => toggleSelect(item.row)} style={{ cursor: 'pointer' }}>
+              visibleData.map((item) => (
+                <tr
+                  key={item.row}
+                  onClick={() => toggleSelect(item.row)}
+                  style={{ cursor: 'pointer' }}
+                >
                   <td onClick={e => e.stopPropagation()}>
                     <input
                       type="checkbox"
@@ -162,9 +170,11 @@ const WaitTable = () => {
                     <select
                       className={`form-select form-select-sm ${item.location === '-' ? 'border-danger' : 'border-success'}`}
                       value={item.location}
-                      onChange={e => handleChange(idx, 'location', e.target.value)}
+                      onChange={e => handleChange(data.indexOf(item), 'location', e.target.value)}
                     >
-                      {LOCATIONS.map(l => <option key={l} value={l}>{l}</option>)}
+                      {LOCATIONS.map(l => (
+                        <option key={l} value={l}>{l}</option>
+                      ))}
                     </select>
                   </td>
 
@@ -172,9 +182,11 @@ const WaitTable = () => {
                     <select
                       className={`form-select form-select-sm ${item.status === '-' ? 'border-danger' : 'border-success'}`}
                       value={item.status}
-                      onChange={e => handleChange(idx, 'status', e.target.value)}
+                      onChange={e => handleChange(data.indexOf(item), 'status', e.target.value)}
                     >
-                      {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                      {STATUS_OPTIONS.map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
                     </select>
                   </td>
 
@@ -182,7 +194,7 @@ const WaitTable = () => {
                     <input
                       className="form-control form-control-sm"
                       value={item.note}
-                      onChange={e => handleChange(idx, 'note', e.target.value)}
+                      onChange={e => handleChange(data.indexOf(item), 'note', e.target.value)}
                     />
                   </td>
 
