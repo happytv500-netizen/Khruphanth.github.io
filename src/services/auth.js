@@ -85,10 +85,14 @@ export const AuthService = {
 /* =========================
    🔐 AUTH GUARD (ADMIN)
 ========================= */
+/* =========================
+   🔐 AUTH GUARD (ADMIN & SADMIN)
+========================= */
 export function requireAdmin() {
   const user = AuthService.getCurrentUser();
 
-  if (!user || user.role !== "admin") {
+  // ปรับเงื่อนไขให้ยอมรับทั้ง "admin" และ "sadmin"
+  if (!user || (user.role !== "admin" && user.role !== "sadmin")) {
     window.location.replace("/");
     return false;
   }
