@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Swal from 'sweetalert2';
-import { fetchSheetData, postAction } from '../../services/api';
+import { fetchSheetData, postAction } from '../../services/api'; 
 import { SHEET_NAMES } from '../../config/config';
 
 const CATEGORIES = ["-", "เครื่องใช้ไฟฟ้า", "พัดลม", "เครื่องปรับอากาศ", "เฟอร์นิเจอร์", "อุปกรณ์คอมพิวเตอร์", "สื่อการสอน", "อื่นๆ"];
@@ -43,37 +43,24 @@ const RetryImage = ({ src, alt, height }) => {
 const InventoryTable = () => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
-
-  // Modes: 'view', 'edit', 'delete'
   const [mode, setMode] = useState('view');
-
-  // Modals
   const [showAddModal, setShowAddModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   
-  // Data States
   const [newItems, setNewItems] = useState([{ id: 1, code: '', name: '', category: '-' }]); 
   const [currentItem, setCurrentItem] = useState(null);
   const [historyLogs, setHistoryLogs] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  // Table Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: 'no', direction: 'asc' });
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(20);
 
-  // Action States
-  const [selectedRows, setSelectedRows] = useState(new Set()); // สำหรับ Delete และ Edit
+  const [selectedRows, setSelectedRows] = useState(new Set()); 
   const [editBuffer, setEditBuffer] = useState({}); 
-  
-  // New: Action State for Add Modal
-  const [selectedNewRows, setSelectedNewRows] = useState(new Set()); // สำหรับ Add Modal
+  const [selectedNewRows, setSelectedNewRows] = useState(new Set()); 
 
-  // ใส่ URL Script ของคุณที่นี่
-  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbywQIrY1P-FxtF0sCUn026K-oX1-QnxhE8n8TzWb7F7X6s6XQ0/exec"; // <-- แก้ URL ตรงนี้ให้ถูกต้อง
-
-  // ================= LOAD =================
   const loadList = async () => {
     setLoading(true);
     try {
@@ -106,7 +93,6 @@ const InventoryTable = () => {
     setSelectedNewRows(new Set());
   };
 
-  // ================= PROCESS DATA =================
   const processedData = useMemo(() => {
     let items = [...data];
     if (searchTerm) {
@@ -134,17 +120,16 @@ const InventoryTable = () => {
   const totalPages = Math.ceil(processedData.length / itemsPerPage);
   const currentItems = processedData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-  // ================= HANDLERS: ADD (Auto Row & Auto Check) =================
+  // ================= HANDLERS: ADD =================
   const handleNewItemChange = (id, field, value) => {
     const updatedItems = newItems.map(item => item.id === id ? { ...item, [field]: value } : item);
     setNewItems(updatedItems);
 
-    // Auto Select: ถ้ามีการพิมพ์ ให้ติ๊กถูกแถวนั้นอัตโนมัติ
+    // ติ๊กถูกอัตโนมัติเมื่อมีการแก้ไข
     if (!selectedNewRows.has(id)) {
         setSelectedNewRows(prev => new Set(prev).add(id));
     }
 
-    // Auto Add Row
     const lastItem = updatedItems[updatedItems.length - 1];
     if (lastItem.id === id && lastItem.code && lastItem.name && lastItem.category !== '-') {
         setNewItems([...updatedItems, { id: Date.now(), code: '', name: '', category: '-' }]);
@@ -167,9 +152,7 @@ const InventoryTable = () => {
   };
 
   const saveBatchAdd = async () => {
-    // กรองเฉพาะแถวที่ติ๊กถูก และมีข้อมูลครบ
     const itemsToSend = newItems.filter(i => selectedNewRows.has(i.id) && i.code.trim() !== '' && i.name.trim() !== '');
-
     if (itemsToSend.length === 0) return Swal.fire('เตือน', 'กรุณาเลือกรายการและกรอกข้อมูลให้ครบ', 'warning');
 
     setShowAddModal(false);
@@ -179,43 +162,35 @@ const InventoryTable = () => {
         let count = 0;
         for (const item of itemsToSend) {
             Swal.update({ html: `กำลังเพิ่มรายการ: ${item.code}` });
-            
-            const formData = new FormData();
-            formData.append("action", "add");
-            formData.append("sheet", "DATA");
-            formData.append("รหัส", item.code);
-            formData.append("ชื่อ", item.name);
-            formData.append("ที่อยู่", item.category);
-            formData.append("สถานะ", "ใช้งานได้"); // เพิ่มสถานะกลับมาตามสั่ง
-            formData.append("รายละเอียด", "-");
-
-            await fetch(SCRIPT_URL, { method: "POST", body: formData, mode: "no-cors" });
+            await postAction("DATA", "add", {
+                "รหัส": item.code,
+                "ชื่อ": item.name,
+                "ที่อยู่": item.category,
+                "สถานะ": "ใช้งานได้",
+                "รายละเอียด": "-"
+            });
             count++;
         }
         Swal.fire('สำเร็จ', `เพิ่ม ${count} รายการเรียบร้อย`, 'success');
         resetModes();
         setTimeout(() => loadList(), 1500);
     } catch (e) {
-        console.error(e);
         Swal.fire('Error', 'เกิดข้อผิดพลาดในการส่งข้อมูล', 'error');
     }
   };
 
-  // ================= HANDLERS: EDIT MODE (Auto Check) =================
+  // ================= HANDLERS: EDIT =================
   const enterEditMode = () => {
     const buffer = {};
     currentItems.forEach(item => { buffer[item.row] = { ...item }; });
     setEditBuffer(buffer);
-    setSelectedRows(new Set()); // เคลียร์การเลือกเริ่มต้น
+    setSelectedRows(new Set());
     setMode('edit');
   };
 
   const handleEditChange = (rowId, field, value) => {
-    setEditBuffer(prev => ({ 
-        ...prev, 
-        [rowId]: { ...prev[rowId], [field]: value } 
-    }));
-    // Auto Select: เมื่อแก้ข้อมูล ให้ติ๊กถูกแถวนั้นทันที
+    setEditBuffer(prev => ({ ...prev, [rowId]: { ...prev[rowId], [field]: value } }));
+    // ติ๊กถูกอัตโนมัติเมื่อมีการแก้ไข
     if (!selectedRows.has(rowId)) {
         setSelectedRows(prev => new Set(prev).add(rowId));
     }
@@ -223,35 +198,28 @@ const InventoryTable = () => {
 
   const saveBulkEdit = async () => {
     const rowsToUpdate = Array.from(selectedRows);
-    if (rowsToUpdate.length === 0) return Swal.fire('เตือน', 'ไม่มีรายการที่ถูกเลือกแก้ไข', 'warning');
+    if (rowsToUpdate.length === 0) return Swal.fire('เตือน', 'ไม่มีรายการที่ถูกแก้ไข', 'warning');
 
     Swal.fire({ title: `กำลังบันทึก ${rowsToUpdate.length} รายการ...`, didOpen: () => Swal.showLoading() });
-    
     try {
         for (const rowId of rowsToUpdate) {
             const item = editBuffer[rowId];
-            
-            const formData = new FormData();
-            formData.append("action", "edit");
-            formData.append("sheet", "DATA");
-            formData.append("row", rowId);
-            formData.append("รหัส", item.code);
-            formData.append("ชื่อ", item.name);
-            formData.append("ที่อยู่", item.category); 
-            formData.append("รายละเอียด", item.detail);
-            // ตัดสถานะออกใน edit ตามสั่ง
-
-            await fetch(SCRIPT_URL, { method: "POST", body: formData, mode: "no-cors" });
+            await postAction("DATA", "edit", {
+                row: rowId,
+                "รหัส": item.code,
+                "ชื่อ": item.name,
+                "ที่อยู่": item.category,
+                "รายละเอียด": item.detail
+            });
         }
         Swal.fire('บันทึกเรียบร้อย', '', 'success');
         loadList();
     } catch (e) {
-        console.error(e);
         Swal.fire('Error', 'บันทึกไม่สำเร็จ', 'error');
     }
   };
 
-  // ================= HANDLERS: DELETE MODE =================
+  // ================= HANDLERS: DELETE =================
   const toggleSelect = (rowId) => {
     const newSet = new Set(selectedRows);
     if (newSet.has(rowId)) newSet.delete(rowId); else newSet.add(rowId);
@@ -264,22 +232,15 @@ const InventoryTable = () => {
       Swal.fire({ title: 'กำลังลบ...', didOpen: () => Swal.showLoading() });
       try {
         const sorted = Array.from(selectedRows).sort((a, b) => b - a);
-        for (const row of sorted) {
-            const formData = new FormData();
-            formData.append("action", "delete");
-            formData.append("sheet", "DATA");
-            formData.append("row", row);
-            await fetch(SCRIPT_URL, { method: "POST", body: formData, mode: "no-cors" });
-        }
+        for (const row of sorted) await postAction("DATA", "delete", { row });
         Swal.fire('ลบเสร็จสิ้น', '', 'success');
         loadList();
       } catch (e) {
-          Swal.fire('Error', 'ลบไม่สำเร็จ', 'error');
+        Swal.fire('Error', 'ลบไม่สำเร็จ', 'error');
       }
     }
   };
 
-  // ================= HANDLERS: OTHERS =================
   const openHistory = async (item) => {
     setCurrentItem(item); setShowHistoryModal(true); setHistoryLoading(true); setHistoryLogs([]);
     try {
@@ -295,17 +256,13 @@ const InventoryTable = () => {
 
   return (
     <div className="card shadow-sm rounded-4">
-      
-      {/* --- HEADER --- */}
       <div className="card-header bg-white py-3">
         <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
-          
           <div className="d-flex align-items-center gap-2">
             <h5 className="fw-bold text-primary m-0"><i className="bi bi-box-seam me-2"></i>ฐานข้อมูลครุภัณฑ์</h5>
             {mode === 'edit' && <span className="badge bg-warning text-dark">โหมดแก้ไข</span>}
             {mode === 'delete' && <span className="badge bg-danger">โหมดลบรายการ</span>}
           </div>
-          
           <div className="d-flex align-items-center gap-2">
              {mode === 'view' && (
                 <div className="input-group input-group-sm" style={{width: '200px'}}>
@@ -313,39 +270,24 @@ const InventoryTable = () => {
                     <input className="form-control" placeholder="ค้นหา..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                 </div>
              )}
-
             <div className="btn-group btn-group-sm">
                 {mode === 'view' && (
                     <>
-                        <button className="btn btn-outline-secondary" onClick={loadList} disabled={loading} title="รีเฟรช">
-                            <i className={`bi bi-arrow-clockwise ${loading ? 'spin-anim' : ''}`}></i>
-                        </button>
-                        <button className="btn btn-warning text-dark" onClick={enterEditMode}>
-                            <i className="bi bi-pencil-square"></i> แก้ไขหลายรายการ
-                        </button>
-                        <button className="btn btn-danger" onClick={() => setMode('delete')}>
-                            <i className="bi bi-trash"></i> ลบหลายรายการ
-                        </button>
-                        <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
-                            <i className="bi bi-plus-lg"></i> เพิ่มรายการ
-                        </button>
+                        <button className="btn btn-outline-secondary" onClick={loadList} disabled={loading} title="รีเฟรช"><i className={`bi bi-arrow-clockwise ${loading ? 'spin-anim' : ''}`}></i></button>
+                        <button className="btn btn-warning text-dark" onClick={enterEditMode}><i className="bi bi-pencil-square"></i> แก้ไขหลายรายการ</button>
+                        <button className="btn btn-danger" onClick={() => setMode('delete')}><i className="bi bi-trash"></i> ลบหลายรายการ</button>
+                        <button className="btn btn-primary" onClick={() => setShowAddModal(true)}><i className="bi bi-plus-lg"></i> เพิ่มรายการ</button>
                     </>
                 )}
-
                 {mode === 'edit' && (
                     <>
-                        <button className="btn btn-success px-3" onClick={saveBulkEdit}>
-                            <i className="bi bi-save me-1"></i> บันทึก ({selectedRows.size})
-                        </button>
+                        <button className="btn btn-success px-3" onClick={saveBulkEdit}><i className="bi bi-save me-1"></i> บันทึกที่เลือก ({selectedRows.size})</button>
                         <button className="btn btn-secondary px-3" onClick={resetModes}>ยกเลิก</button>
                     </>
                 )}
-
                 {mode === 'delete' && (
                     <>
-                        <button className="btn btn-danger px-3" onClick={deleteBulk} disabled={selectedRows.size === 0}>
-                            <i className="bi bi-trash me-1"></i> ยืนยันลบ ({selectedRows.size})
-                        </button>
+                        <button className="btn btn-danger px-3" onClick={deleteBulk} disabled={selectedRows.size === 0}><i className="bi bi-trash me-1"></i> ยืนยันลบ ({selectedRows.size})</button>
                         <button className="btn btn-secondary px-3" onClick={resetModes}>ยกเลิก</button>
                     </>
                 )}
@@ -354,78 +296,35 @@ const InventoryTable = () => {
         </div>
       </div>
 
-      {/* --- TABLE --- */}
       <div className="table-responsive" style={{ maxHeight: '70vh' }}>
         <table className="table table-hover align-middle mb-0">
           <thead className="table-light sticky-top" style={{zIndex: 5}}>
             <tr>
-              {/* Checkbox Column (Delete & Edit) */}
-              {(mode === 'delete' || mode === 'edit') && (
-                <th width="40" className={`text-center ${mode === 'delete' ? 'bg-danger text-danger' : 'bg-warning text-dark'} bg-opacity-10`}>
-                    <i className="bi bi-check2-square"></i>
-                </th>
-              )}
-              
+              {(mode === 'delete' || mode === 'edit') && <th width="40" className={`text-center ${mode === 'delete' ? 'bg-danger text-danger' : 'bg-warning text-dark'} bg-opacity-10`}><i className="bi bi-check2-square"></i></th>}
               <th onClick={() => setSortConfig({ key: 'no', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })} style={{cursor:'pointer', width: '80px'}}>ลำดับ {getSortIcon('no')}</th>
               <th onClick={() => setSortConfig({ key: 'code', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })} style={{cursor:'pointer', width: '150px'}}>รหัส {getSortIcon('code')}</th>
               <th onClick={() => setSortConfig({ key: 'name', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })} style={{cursor:'pointer'}}>ชื่อครุภัณฑ์ {getSortIcon('name')}</th>
               <th onClick={() => setSortConfig({ key: 'category', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })} style={{cursor:'pointer'}}>หมวดหมู่ {getSortIcon('category')}</th>
-              
               {mode !== 'edit' && <><th className="text-center">Barcode</th><th className="text-center">QR Code</th></>}
             </tr>
           </thead>
           <tbody>
             {currentItems.length === 0 ? (
                <tr><td colSpan="7" className="text-center py-5 text-muted">ไม่พบข้อมูล</td></tr>
-            ) : currentItems.map((item, i) => {
+            ) : currentItems.map((item) => {
               const buffer = mode === 'edit' ? (editBuffer[item.row] || item) : item;
               const isSelected = selectedRows.has(item.row);
-
               return (
-                <tr 
-                  key={item.row} 
-                  className={mode === 'view' ? "align-middle table-row-hover" : "align-middle"}
-                  onClick={mode === 'view' ? () => openHistory(item) : (mode === 'delete' || mode === 'edit') ? () => toggleSelect(item.row) : undefined}
-                >
-                  {(mode === 'delete' || mode === 'edit') && (
-                      <td className={`text-center ${mode === 'delete' ? 'bg-danger' : 'bg-warning'} bg-opacity-10`}>
-                        <input type="checkbox" className="form-check-input" checked={isSelected} onChange={() => toggleSelect(item.row)} />
-                      </td>
-                  )}
-
+                <tr key={item.row} className={mode === 'view' ? "align-middle table-row-hover" : "align-middle"} onClick={mode === 'view' ? () => openHistory(item) : (mode === 'delete' || mode === 'edit') ? () => toggleSelect(item.row) : undefined}>
+                  {(mode === 'delete' || mode === 'edit') && <td className={`text-center ${mode === 'delete' ? 'bg-danger' : 'bg-warning'} bg-opacity-10`}><input type="checkbox" className="form-check-input" checked={isSelected} onChange={() => toggleSelect(item.row)} /></td>}
                   <td>{item.no}</td>
-
-                  {/* Code */}
-                  <td>
-                    {mode === 'edit' ? (
-                        <input className="form-control form-control-sm" value={buffer.code} onChange={e => handleEditChange(item.row, 'code', e.target.value)} />
-                    ) : <span className="fw-bold text-primary">{item.code}</span>}
-                  </td>
-
-                  {/* Name */}
-                  <td>
-                    {mode === 'edit' ? (
-                        <input className="form-control form-control-sm" value={buffer.name} onChange={e => handleEditChange(item.row, 'name', e.target.value)} />
-                    ) : item.name}
-                  </td>
-
-                  {/* Category */}
-                  <td>
-                    {mode === 'edit' ? (
-                        <select className="form-select form-select-sm" value={buffer.category} onChange={e => handleEditChange(item.row, 'category', e.target.value)}>
-                            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                    ) : <span className="badge bg-secondary bg-opacity-10 text-dark border">{item.category}</span>}
-                  </td>
-
+                  <td>{mode === 'edit' ? <input className="form-control form-control-sm" value={buffer.code} onClick={e => e.stopPropagation()} onChange={e => handleEditChange(item.row, 'code', e.target.value)} /> : <span className="fw-bold text-primary">{item.code}</span>}</td>
+                  <td>{mode === 'edit' ? <input className="form-control form-control-sm" value={buffer.name} onClick={e => e.stopPropagation()} onChange={e => handleEditChange(item.row, 'name', e.target.value)} /> : item.name}</td>
+                  <td>{mode === 'edit' ? <select className="form-select form-select-sm" value={buffer.category} onClick={e => e.stopPropagation()} onChange={e => handleEditChange(item.row, 'category', e.target.value)}>{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select> : <span className="badge bg-secondary bg-opacity-10 text-dark border">{item.category}</span>}</td>
                   {mode !== 'edit' && (
                     <>
-                      <td className="text-center" onClick={e => e.stopPropagation()}>
-                        <RetryImage src={`https://barcode.tec-it.com/barcode.ashx?data=${item.code}&code=Code128&translate-esc=on`} alt="bc" height="25" />
-                      </td>
-                      <td className="text-center" onClick={e => e.stopPropagation()}>
-                        <RetryImage src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${item.code}`} alt="qr" height="35" />
-                      </td>
+                      <td className="text-center" onClick={e => e.stopPropagation()}><RetryImage src={`https://barcode.tec-it.com/barcode.ashx?data=${item.code}&code=Code128&translate-esc=on`} alt="bc" height="25" /></td>
+                      <td className="text-center" onClick={e => e.stopPropagation()}><RetryImage src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${item.code}`} alt="qr" height="35" /></td>
                     </>
                   )}
                 </tr>
@@ -435,12 +334,9 @@ const InventoryTable = () => {
         </table>
       </div>
 
-      {/* --- PAGINATION --- */}
       <div className="card-footer bg-white py-3 d-flex justify-content-between align-items-center">
         <select className="form-select form-select-sm w-auto" value={itemsPerPage} onChange={e => {setItemsPerPage(Number(e.target.value)); setCurrentPage(1);}}>
-            <option value="20">20 / หน้า</option>
-            <option value="50">50 / หน้า</option>
-            <option value="100">100 / หน้า</option>
+            <option value="20">20 / หน้า</option><option value="50">50 / หน้า</option><option value="100">100 / หน้า</option>
         </select>
         <div className="btn-group btn-group-sm">
             <button className="btn btn-outline-secondary" disabled={currentPage===1} onClick={()=>setCurrentPage(p=>p-1)}>ก่อนหน้า</button>
@@ -449,7 +345,6 @@ const InventoryTable = () => {
         </div>
       </div>
 
-      {/* --- ADD BATCH MODAL --- */}
       {showAddModal && (
         <div className="modal fade show d-block" style={{background:'rgba(0,0,0,0.5)'}}>
           <div className="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
@@ -463,25 +358,13 @@ const InventoryTable = () => {
                     <thead className="table-light">
                         <tr>
                             <th width="40" className="text-center bg-primary bg-opacity-10"><i className="bi bi-check2-square"></i></th>
-                            <th width="50">#</th>
-                            <th width="25%">รหัส *</th>
-                            <th width="40%">ชื่อครุภัณฑ์ *</th>
-                            <th width="25%">หมวดหมู่</th>
-                            <th width="50"></th>
+                            <th width="50">#</th><th width="25%">รหัส *</th><th width="40%">ชื่อครุภัณฑ์ *</th><th width="25%">หมวดหมู่</th><th width="50"></th>
                         </tr>
                     </thead>
                     <tbody>
                         {newItems.map((item, idx) => (
                             <tr key={item.id}>
-                                {/* Add Modal Checkbox */}
-                                <td className="text-center align-middle bg-primary bg-opacity-10">
-                                    <input 
-                                        type="checkbox" 
-                                        className="form-check-input" 
-                                        checked={selectedNewRows.has(item.id)} 
-                                        onChange={() => toggleNewRowSelect(item.id)} 
-                                    />
-                                </td>
+                                <td className="text-center align-middle bg-primary bg-opacity-10"><input type="checkbox" className="form-check-input" checked={selectedNewRows.has(item.id)} onChange={() => toggleNewRowSelect(item.id)} /></td>
                                 <td className="text-center align-middle">{idx + 1}</td>
                                 <td><input className="form-control form-control-sm" placeholder="รหัส" value={item.code} onChange={e => handleNewItemChange(item.id, 'code', e.target.value)} /></td>
                                 <td><input className="form-control form-control-sm" placeholder="ชื่อ" value={item.name} onChange={e => handleNewItemChange(item.id, 'name', e.target.value)} /></td>
@@ -493,16 +376,15 @@ const InventoryTable = () => {
                 </table>
               </div>
               <div className="modal-footer bg-light">
-                <small className="text-muted me-auto">* แถวจะถูกเลือกอัตโนมัติเมื่อพิมพ์ข้อมูล | จะบันทึกเฉพาะแถวที่ติ๊กถูกเท่านั้น</small>
+                <small className="text-muted me-auto">* จะบันทึกเฉพาะแถวที่ติ๊กถูกเท่านั้น</small>
                 <button className="btn btn-secondary" onClick={() => setShowAddModal(false)}>ยกเลิก</button>
-                <button className="btn btn-primary px-4" onClick={saveBatchAdd}>บันทึกรายการที่เลือก ({selectedNewRows.size})</button>
+                <button className="btn btn-primary px-4" onClick={saveBatchAdd}>บันทึกที่เลือก ({selectedNewRows.size})</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* --- HISTORY MODAL --- */}
       {showHistoryModal && currentItem && (
         <div className="modal fade show d-block" style={{background:'rgba(0,0,0,0.5)'}}>
           <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
