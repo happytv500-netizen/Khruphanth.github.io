@@ -1,58 +1,67 @@
-import React, { useState, useEffect, useRef } from 'react';
-import Swal from 'sweetalert2';
-import { fetchSheetData, postAction } from '../services/api';
-import { SHEET_NAMES } from '../config/config';
-import { AuthService } from '../services/auth';
+import React, { useState, useEffect, useRef } from "react";
+import Swal from "sweetalert2";
+import { fetchSheetData, postAction } from "../services/api";
+import { AuthService } from "../services/auth";
+
+const SHEET = "SHOW"; // 🔥 ฟันธง ไม่มั่ว
 
 const Report = () => {
   const [rawData, setRawData] = useState([]);
   const [displayData, setDisplayData] = useState([]);
   const [hasSearched, setHasSearched] = useState(false);
-  const [filters, setFilters] = useState({ search: '', status: '' });
+  const [filters, setFilters] = useState({ search: "", status: "" });
   const [currentUser, setCurrentUser] = useState(null);
   const reportRef = useRef();
 
+  // ---------------------------
+  // load data
+  // ---------------------------
   useEffect(() => {
-    const user = AuthService.getCurrentUser();
-    setCurrentUser(user);
+    setCurrentUser(AuthService.getCurrentUser());
 
     const load = async () => {
-      const rows = await fetchSheetData(SHEET_NAMES.SHOW || "SHOW");
+      const rows = await fetchSheetData(SHEET);
       setRawData(rows.length > 1 ? rows.slice(1) : []);
     };
     load();
   }, []);
 
+  // ---------------------------
+  // search (preview only)
+  // ---------------------------
   const handleSearch = () => {
     setHasSearched(true);
 
     let filtered = rawData.map((r, i) => ({
       id: i + 1,
-      code: String(r[1] || "-"),
-      name: String(r[2] || "-"),
-      location: String(r[3] || "-"),
-      status: String(r[4] || "-"),
-      note: String(r[5] || "-")
+      code: String(r[1] || ""),
+      name: String(r[2] || ""),
+      location: String(r[3] || ""),
+      status: String(r[4] || ""),
+      note: String(r[5] || "")
     }));
 
-    const s = String(filters.search || "").toLowerCase();
+    const s = filters.search.trim().toLowerCase();
     if (s) {
-      filtered = filtered.filter(item =>
-        item.code.toLowerCase().includes(s) ||
-        item.name.toLowerCase().includes(s)
+      filtered = filtered.filter(
+        x =>
+          x.code.toLowerCase().includes(s) ||
+          x.name.toLowerCase().includes(s)
       );
     }
 
     if (filters.status) {
-      filtered = filtered.filter(item => item.status === filters.status);
+      filtered = filtered.filter(x => x.status === filters.status);
     }
 
     setDisplayData(filtered);
   };
 
-  // 🔥 จุดแก้จริงอยู่ตรงนี้
+  // ---------------------------
+  // export report (ยิง GAS)
+  // ---------------------------
   const handleExport = async (format) => {
-    if (displayData.length === 0) {
+    if (!displayData.length) {
       Swal.fire("ไม่มีข้อมูล", "กรุณาค้นหาข้อมูลก่อน", "warning");
       return;
     }
@@ -65,11 +74,10 @@ const Report = () => {
 
     try {
       const res = await postAction(
-        SHEET_NAMES.SHOW || "SHOW",
+        SHEET,
         "generateReport",
         {
           format,
-          // ✅ stringify เพื่อไม่ให้ FormData พัง
           filters: JSON.stringify({
             search: filters.search || "",
             status: filters.status || ""
@@ -83,9 +91,15 @@ const Report = () => {
 
       const base64 = res.fileData.replace(/-/g, "+").replace(/_/g, "/");
       const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-      const blob = new Blob([bytes], { type: "application/octet-stream" });
 
+      const mime =
+        format === "pdf"
+          ? "application/pdf"
+          : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+      const blob = new Blob([bytes], { type: mime });
       const url = URL.createObjectURL(blob);
+
       const a = document.createElement("a");
       a.href = url;
       a.download = res.fileName;
@@ -98,17 +112,21 @@ const Report = () => {
     }
   };
 
+  // ---------------------------
+  // render
+  // ---------------------------
   return (
     <div className="container py-4">
-      {/* Filter */}
-      <div className="card border-0 shadow-sm mb-4 no-print">
+      {/* filter */}
+      <div className="card shadow-sm mb-4 no-print">
         <div className="card-body row g-3">
           <div className="col-md-5">
             <label className="form-label fw-bold small">ค้นหารหัส/ชื่อ</label>
             <input
-              type="text"
               className="form-control"
-              onChange={e => setFilters({ ...filters, search: e.target.value })}
+              onChange={e =>
+                setFilters({ ...filters, search: e.target.value })
+              }
             />
           </div>
 
@@ -116,7 +134,9 @@ const Report = () => {
             <label className="form-label fw-bold small">สถานะ</label>
             <select
               className="form-select"
-              onChange={e => setFilters({ ...filters, status: e.target.value })}
+              onChange={e =>
+                setFilters({ ...filters, status: e.target.value })
+              }
             >
               <option value="">ทุกสถานะ</option>
               <option value="ใช้งานได้">ใช้งานได้</option>
@@ -136,25 +156,39 @@ const Report = () => {
 
       {hasSearched && (
         <div className="text-end mb-3 no-print">
-          <button className="btn btn-danger me-2" onClick={() => handleExport("pdf")}>
+          <button
+            className="btn btn-danger me-2"
+            onClick={() => handleExport("pdf")}
+          >
             PDF
           </button>
-          <button className="btn btn-primary" onClick={() => handleExport("doc")}>
+          <button
+            className="btn btn-primary"
+            onClick={() => handleExport("doc")}
+          >
             Word
           </button>
         </div>
       )}
 
-      {/* Preview */}
+      {/* preview */}
       <div
         ref={reportRef}
         className="bg-white p-5 shadow-sm mx-auto"
         style={{ width: "210mm", minHeight: "297mm" }}
       >
-        <h4 className="text-center fw-bold mb-3">ใบรายงานสรุปสถานะครุภัณฑ์</h4>
+        <h4 className="text-center fw-bold mb-3">
+          ใบรายงานสรุปสถานะครุภัณฑ์
+        </h4>
 
-        <p><strong>ผู้พิมพ์รายงาน:</strong> {currentUser?.name || "แอดมินระบบ"}</p>
-        <p><strong>วันที่:</strong> {new Date().toLocaleDateString("th-TH")}</p>
+        <p>
+          <strong>ผู้พิมพ์รายงาน:</strong>{" "}
+          {currentUser?.name || "แอดมินระบบ"}
+        </p>
+        <p>
+          <strong>วันที่:</strong>{" "}
+          {new Date().toLocaleDateString("th-TH")}
+        </p>
 
         <table className="table table-bordered mt-3">
           <thead className="text-center">
