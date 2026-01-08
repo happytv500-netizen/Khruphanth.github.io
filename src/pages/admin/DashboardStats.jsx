@@ -5,29 +5,32 @@ import { SHEET_NAMES } from '../../config/config';
 
 const DashboardStats = () => {
   const navigate = useNavigate();
-  const [showData, setShowData] = useState([]); // สำหรับ 4 สถานะย่อย (ดึงจากชีท SHOW)
+  const [showData, setShowData] = useState([]);
   const [stats, setStats] = useState({ total: 0, wait: 0, available: 0, broken: 0, repair: 0, expired: 0 });
   const [modalData, setModalData] = useState({ show: false, title: '', items: [] });
 
   useEffect(() => {
     const load = async () => {
       try {
-        // ดึงข้อมูลจากทั้ง 3 ชีท
         const d = await fetchSheetData(SHEET_NAMES.DATA || "DATA");
         const w = await fetchSheetData(SHEET_NAMES.WAIT || "WAIT");
-        const s = await fetchSheetData(SHEET_NAMES.SHOW || "SHOW"); // ดึงชีท SHOW
-        
-        setShowData(s);
+        const s = await fetchSheetData(SHEET_NAMES.SHOW || "SHOW");
 
-        // คำนวณสถิติ
+        // ใช้ .slice(1) เพื่อตัดแถว Header ทิ้ง ป้องกันการนับเกิน
+        const dataRows = d.length > 1 ? d.slice(1) : [];
+        const waitRows = w.length > 1 ? w.slice(1) : [];
+        const showRows = s.length > 1 ? s.slice(1) : [];
+
+        setShowData(showRows);
+
+        // คำนวณสถิติ (อ้างอิงสถานะจาก index 5 ในชีท SHOW)
         setStats({
-          total: d.length, // ทั้งหมดจาก DATA
-          wait: w.length,  // รอตรวจจาก WAIT
-          // 4 สถานะล่างนี้ กรองจากชีท SHOW (สมมติสถานะอยู่ index ที่ 5)
-          available: s.filter(r => String(r[5] || "").trim() === "ใช้งานได้").length,
-          broken: s.filter(r => String(r[5] || "").trim() === "ชำรุด").length,
-          repair: s.filter(r => String(r[5] || "").trim() === "ส่งซ่อม").length,
-          expired: s.filter(r => String(r[5] || "").trim() === "เสื่อมสภาพ").length,
+          total: dataRows.length,
+          wait: waitRows.length,
+          available: showRows.filter(r => String(r[5] || "").trim() === "ใช้งานได้").length,
+          broken: showRows.filter(r => String(r[5] || "").trim() === "ชำรุด").length,
+          repair: showRows.filter(r => String(r[5] || "").trim() === "ส่งซ่อม").length,
+          expired: showRows.filter(r => String(r[5] || "").trim() === "เสื่อมสภาพ").length,
         });
       } catch (err) {
         console.error("Load stats error:", err);
@@ -37,7 +40,6 @@ const DashboardStats = () => {
   }, []);
 
   const openModal = (status) => {
-    // กรองข้อมูลจากชีท SHOW ตามสถานะที่คลิก
     const filtered = showData.filter(r => String(r[5] || "").trim() === status);
     setModalData({ show: true, title: `รายการ: ${status}`, items: filtered });
   };
@@ -68,22 +70,22 @@ const DashboardStats = () => {
         <Card title="⚠️ เสื่อมสภาพ" count={stats.expired} color="secondary" onClick={() => openModal("เสื่อมสภาพ")} />
       </div>
 
-      {/* Modal แสดงผลข้อมูลจากชีท SHOW */}
+      {/* Modal โดยใช้ Standard Bootstrap CSS */}
       {modalData.show && (
         <div className="modal d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1050 }}>
           <div className="modal-dialog modal-lg modal-dialog-scrollable">
-            <div className="modal-content">
+            <div className="modal-content text-dark">
               <div className="modal-header">
-                <h5 className="modal-title">{modalData.title}</h5>
+                <h5 className="modal-title fw-bold">{modalData.title}</h5>
                 <button type="button" className="btn-close" onClick={() => setModalData({ ...modalData, show: false })}></button>
               </div>
               <div className="modal-body">
-                <table className="table table-striped table-bordered">
+                <table className="table table-hover table-bordered">
                   <thead className="table-light">
                     <tr>
-                      <th>รหัส</th>
+                      <th style={{ width: '20%' }}>รหัส</th>
                       <th>ชื่อรายการ</th>
-                      <th>สถานะ</th>
+                      <th style={{ width: '25%' }}>สถานะ</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -94,7 +96,7 @@ const DashboardStats = () => {
                         <td>{item[5]}</td>
                       </tr>
                     )) : (
-                      <tr><td colSpan="3" className="text-center">ไม่พบข้อมูลในชีท SHOW</td></tr>
+                      <tr><td colSpan="3" className="text-center">ไม่พบข้อมูลในสถานะนี้</td></tr>
                     )}
                   </tbody>
                 </table>
