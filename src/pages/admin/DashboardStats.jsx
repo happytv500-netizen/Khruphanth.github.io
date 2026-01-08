@@ -27,10 +27,10 @@ const DashboardStats = () => {
         setStats({
           total: dataRows.length,
           wait: waitRows.length,
-          available: showRows.filter(r => String(r[5] || "").trim() === "ใช้งานได้").length,
-          broken: showRows.filter(r => String(r[5] || "").trim() === "ชำรุด").length,
-          repair: showRows.filter(r => String(r[5] || "").trim() === "ส่งซ่อม").length,
-          expired: showRows.filter(r => String(r[5] || "").trim() === "เสื่อมสภาพ").length,
+          available: showRows.filter(r => String(r[4] || "").trim() === "ใช้งานได้").length,
+          broken: showRows.filter(r => String(r[4] || "").trim() === "ชำรุด").length,
+          repair: showRows.filter(r => String(r[4] || "").trim() === "ส่งซ่อม").length,
+          expired: showRows.filter(r => String(r[4] || "").trim() === "เสื่อมสภาพ").length,
         });
       } catch (err) {
         console.error("Load stats error:", err);
@@ -40,7 +40,7 @@ const DashboardStats = () => {
   }, []);
 
   const openModal = (status) => {
-    const filtered = showData.filter(r => String(r[5] || "").trim() === status);
+    const filtered = showData.filter(r => String(r[4] || "").trim() === status);
     setModalData({ show: true, title: `รายการ: ${status}`, items: filtered });
   };
 
