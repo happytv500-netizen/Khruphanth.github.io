@@ -14,13 +14,12 @@ const Report = () => {
   const reportRef = useRef();
 
   useEffect(() => {
-    // ดึงข้อมูลผู้ใช้จาก Session/LocalStorage
+    // ดึงชื่อผู้ใช้จากระบบ Login
     const user = AuthService.getCurrentUser();
     setCurrentUser(user);
 
     const load = async () => {
       const rows = await fetchSheetData(SHEET_NAMES.SHOW || "SHOW");
-      // ตัดหัวตาราง (Header) ออก
       setRawData(rows.length > 1 ? rows.slice(1) : []);
     };
     load();
@@ -29,7 +28,6 @@ const Report = () => {
   const handleSearch = () => {
     setLoading(true);
     setHasSearched(true);
-    
     let filtered = rawData.map((r, i) => ({
       id: i + 1,
       code: String(r[1] || "-"),
@@ -48,25 +46,19 @@ const Report = () => {
     if (filters.status) {
       filtered = filtered.filter(item => item.status === filters.status);
     }
-    
     setDisplayData(filtered);
     setLoading(false);
   };
 
   const handleExport = async (format) => {
     if (displayData.length === 0) return;
-    
-    Swal.fire({ 
-      title: `กำลังสร้าง ${format.toUpperCase()}...`, 
-      allowOutsideClick: false, 
-      didOpen: () => Swal.showLoading() 
-    });
+    Swal.fire({ title: `กำลังสร้าง ${format.toUpperCase()}...`, allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
     try {
       const res = await postAction(SHEET_NAMES.SHOW || "SHOW", "generateReport", { 
         format: format,
         filters: {
-          search: String(filters.search || ""),
+          search: String(filters.search || ""), // ป้องกัน Error .toLowerCase
           status: String(filters.status || "")
         }
       });
@@ -79,18 +71,18 @@ const Report = () => {
         link.href = url;
         link.download = res.fileName;
         link.click();
-        Swal.fire('สำเร็จ', 'ดาวน์โหลดรายงานเรียบร้อย', 'success');
+        Swal.fire('สำเร็จ', 'ดาวน์โหลดแล้ว', 'success');
       } else {
-        Swal.fire('ผิดพลาด', res.message || 'สร้างไฟล์ไม่สำเร็จ', 'error');
+        Swal.fire('ผิดพลาด', res.message || 'สร้างไฟล์ไม่ได้', 'error');
       }
     } catch (e) {
-      Swal.fire('ผิดพลาด', 'ระบบเชื่อมต่อ Server ไม่ได้', 'error');
+      Swal.fire('ผิดพลาด', 'ระบบเชื่อมต่อไม่ได้', 'error');
     }
   };
 
   return (
     <div className="container py-4">
-      {/* 🟢 แถวเลือกเงื่อนไข (Filter) */}
+      {/* 🟢 แถบเลือกช่วงข้อมูล (Filter) */}
       <div className="card border-0 shadow-sm mb-4 no-print">
         <div className="card-body row g-3">
           <div className="col-md-5">
@@ -109,26 +101,19 @@ const Report = () => {
             </select>
           </div>
           <div className="col-md-3 d-flex align-items-end">
-            <button className="btn btn-primary w-100" onClick={handleSearch}>
-              <i className="bi bi-search me-2"></i>ค้นหาข้อมูล
-            </button>
+            <button className="btn btn-primary w-100" onClick={handleSearch}>ค้นหา</button>
           </div>
         </div>
       </div>
 
-      {/* ปุ่มออกรายงาน */}
-      {hasSearched && displayData.length > 0 && (
+      {hasSearched && (
         <div className="text-end mb-3 no-print">
-          <button className="btn btn-danger me-2" onClick={() => handleExport('pdf')}>
-            <i className="bi bi-file-earmark-pdf me-1"></i>PDF
-          </button>
-          <button className="btn btn-primary" onClick={() => handleExport('doc')}>
-            <i className="bi bi-file-earmark-word me-1"></i>Word
-          </button>
+          <button className="btn btn-danger me-2" onClick={() => handleExport('pdf')}>PDF</button>
+          <button className="btn btn-primary" onClick={() => handleExport('doc')}>Word</button>
         </div>
       )}
 
-      {/* 📄 พื้นที่แสดงฟอร์มรายงาน */}
+      {/* 📄 ฟอร์มรายงาน */}
       <div ref={reportRef} className="bg-white p-5 shadow-sm mx-auto" style={{ width: '210mm', minHeight: '297mm', color: '#000' }}>
         <div className="text-center mb-4">
           <h4 className="fw-bold">ใบรายงานสรุปสถานะครุภัณฑ์</h4>
@@ -149,15 +134,11 @@ const Report = () => {
         <table className="table table-bordered border-dark">
           <thead className="text-center bg-light">
             <tr>
-              <th>ลำดับ</th>
-              <th>รหัสครุภัณฑ์</th>
-              <th>ชื่อรายการ</th>
-              <th>สถานะ</th>
-              <th>สถานที่</th>
+              <th>ลำดับ</th><th>รหัส</th><th>ชื่อรายการ</th><th>สถานะ</th><th>สถานที่</th>
             </tr>
           </thead>
           <tbody>
-            {displayData.length > 0 ? displayData.map((item, idx) => (
+            {displayData.map((item, idx) => (
               <tr key={idx}>
                 <td className="text-center">{idx + 1}</td>
                 <td className="text-center">{item.code}</td>
@@ -165,9 +146,7 @@ const Report = () => {
                 <td className="text-center">{item.status}</td>
                 <td>{item.location}</td>
               </tr>
-            )) : (
-              <tr><td colSpan="5" className="text-center py-5 text-muted">กรุณาเลือกเงื่อนไขและกดปุ่มค้นหา</td></tr>
-            )}
+            ))}
           </tbody>
         </table>
 
