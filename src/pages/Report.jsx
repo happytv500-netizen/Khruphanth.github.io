@@ -1,9 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import { fetchSheetData } from '../services/api';
+import { fetchSheetData, postAction } from '../services/api';
 import { SHEET_NAMES } from '../config/config';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 
 const Report = () => {
   const [rawData, setRawData] = useState([]);
@@ -11,8 +9,6 @@ const Report = () => {
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [filters, setFilters] = useState({ search: '', status: '' });
-  
-  const reportRef = useRef(); // สำหรับอ้างอิงส่วนที่จะพิมพ์ PDF
 
   useEffect(() => {
     const load = async () => {
@@ -47,23 +43,55 @@ const Report = () => {
     setLoading(false);
   };
 
-  const exportPDF = async () => {
-    const element = reportRef.current;
-    const canvas = await html2canvas(element, { scale: 2 });
-    const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF('p', 'mm', 'a4');
-    const imgProps = pdf.getImageProperties(imgData);
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-    
-    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-    pdf.save(`report_${new Date().getTime()}.pdf`);
+  // เปลี่ยนมาใช้การเรียก GAS แทนการใช้ html2canvas
+  const handleExport = async (format) => {
+    if (displayData.length === 0) return;
+
+    Swal.fire({
+      title: `กำลังสร้างไฟล์ ${format.toUpperCase()}...`,
+      allowOutsideClick: false,
+      didOpen: () => Swal.showLoading()
+    });
+
+    try {
+      // ส่งคำสั่งไปที่ Google Apps Script
+      const res = await postAction(SHEET_NAMES.SHOW || "SHOW", "generateReport", { 
+        format: format,
+        filters: filters 
+      });
+
+      if (res && res.fileData) {
+        // แปลง Base64 กลับเป็นไฟล์เพื่อดาวน์โหลด
+        const base64 = res.fileData.replace(/-/g, '+').replace(/_/g, '/');
+        const byteCharacters = atob(base64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: "application/octet-stream" });
+
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = res.fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        Swal.fire('สำเร็จ', 'ดาวน์โหลดรายงานเรียบร้อย', 'success');
+      } else {
+        throw new Error(res.message || "สร้างไฟล์ไม่สำเร็จ");
+      }
+    } catch (e) {
+      console.error(e);
+      Swal.fire('ผิดพลาด', 'ไม่สามารถสร้างรายงานได้: ' + e.message, 'error');
+    }
   };
 
   return (
     <div className="container py-4">
-      {/* Search Filter */}
-      <div className="card border-0 shadow-sm mb-4 no-print">
+      {/* ส่วน Filter เหมือนเดิม */}
+      <div className="card border-0 shadow-sm mb-4">
         <div className="card-body row g-3">
           <div className="col-md-5">
             <input type="text" className="form-control" placeholder="ค้นหารหัส/ชื่อ..." 
@@ -74,6 +102,8 @@ const Report = () => {
               <option value="">ทุกสถานะ</option>
               <option value="ใช้งานได้">ใช้งานได้</option>
               <option value="ชำรุด">ชำรุด</option>
+              <option value="ส่งซ่อม">ส่งซ่อม</option>
+              <option value="เสื่อมสภาพ">เสื่อมสภาพ</option>
             </select>
           </div>
           <div className="col-md-3">
@@ -83,34 +113,20 @@ const Report = () => {
       </div>
 
       {hasSearched && (
-        <div className="text-end mb-3 no-print">
-          <button className="btn btn-danger" onClick={exportPDF}>
-            <i className="bi bi-file-earmark-pdf"></i> ออกรายงาน PDF
+        <div className="text-end mb-3">
+          <button className="btn btn-danger me-2" onClick={() => handleExport('pdf')}>
+            <i className="bi bi-file-earmark-pdf"></i> PDF (จากระบบ)
+          </button>
+          <button className="btn btn-primary" onClick={() => handleExport('doc')}>
+            <i className="bi bi-file-earmark-word"></i> Word
           </button>
         </div>
       )}
 
-      {/* พื้นที่รายงาน (โครงสร้างตามไฟล์แนบ) */}
-      <div ref={reportRef} className="bg-white p-5 shadow-sm mx-auto" style={{ width: '210mm', minHeight: '297mm', color: '#000' }}>
-        <div className="text-center mb-4">
-          <h4 className="fw-bold">ใบรายงานสรุปสถานะครุภัณฑ์</h4>
-          <p className="mb-1">ระบบจัดการข้อมูลครุภัณฑ์ออนไลน์</p>
-          <hr />
-        </div>
-
-        <div className="row mb-4">
-          <div className="col-8">
-            <p className="mb-1"><strong>ผู้พิมรายงาน:</strong> แอดมินระบบ</p>
-            <p className="mb-1"><strong>หน่วยงาน:</strong> สาขาวิชาเทคโนโลยีคอมพิวเตอร์</p>
-          </div>
-          <div className="col-4 text-end">
-            <p className="mb-1"><strong>วันที่:</strong> {new Date().toLocaleDateString('th-TH')}</p>
-            <p className="mb-1"><strong>เลขที่อ้างอิง:</strong> RE-{Math.floor(Math.random() * 1000000)}</p>
-          </div>
-        </div>
-
-        <table className="table table-bordered border-dark">
-          <thead className="text-center bg-light">
+      {/* ตารางแสดงตัวอย่างบนเว็บ */}
+      <div className="bg-white p-4 shadow-sm">
+        <table className="table table-bordered">
+          <thead className="table-light text-center">
             <tr>
               <th>ลำดับ</th>
               <th>รหัสครุภัณฑ์</th>
@@ -133,14 +149,6 @@ const Report = () => {
             )}
           </tbody>
         </table>
-
-        <div className="mt-5 row">
-          <div className="col-7"></div>
-          <div className="col-5 text-center">
-            <p className="mb-5">(ลงชื่อ)...........................................................</p>
-            <p>ผู้ออกรายงาน</p>
-          </div>
-        </div>
       </div>
     </div>
   );
