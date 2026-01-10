@@ -23,16 +23,12 @@ const Login = () => {
         timer: 1500,
         showConfirmButton: false
       }).then(() => {
-        const userRole = res.user.role.trim();
-        
-        if (userRole === 'admin' || userRole === 'sadmin') {
+        const role = res.user.role.toLowerCase().trim();
+
+        if (role === 'admin' || role === 'sadmin') {
           navigate('/admin');
         } else {
-          if (userRole === 'sadmin') {
-            navigate('/admin');
-          } else {
-            navigate('/user');
-          }
+          navigate('/user');
         }
       });
     } else {
