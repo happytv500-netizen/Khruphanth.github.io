@@ -85,28 +85,18 @@ export const AuthService = {
 /* =========================
    🔐 AUTH GUARD (ADMIN & SADMIN)
 ========================= */
-export function requireAdmin() {
-  // 1. เปลี่ยนจาก "user" เป็น STORAGE_KEY (หรือ "loginUser") ให้ตรงกับที่เก็บไว้ตอน login
-  const raw = localStorage.getItem('loginUser'); 
-  
-  if (!raw) {
-    window.location.replace("/");
-    return false;
+export function requireAdmin(role) {
+  if (!role) return false;
+
+  const cleanRole = role.toLowerCase().trim();
+
+  // คืนค่า true ถ้าเป็น admin หรือ sadmin
+  if (cleanRole === "admin" || cleanRole === "sadmin") {
+    return true;
   }
 
-  const user = JSON.parse(raw);
-  
-  // 2. ตรวจสอบให้แน่ใจว่าดึง role ออกมาได้จริงๆ
-  const role = user.role ? user.role.toLowerCase().trim() : "";
-
-  // 3. เช็คเงื่อนไข: ถ้าไม่ใช่ admin และไม่ใช่ sadmin ให้เด้งไป /user
-  if (role !== "admin" && role !== "sadmin") {
-    window.location.replace("/user");
-    return false;
-  }
-
-  // ถ้าเป็น admin หรือ sadmin จะผ่านไปได้ปกติ
-  return true;
+  // คืนค่า false สำหรับสิทธิ์อื่นๆ
+  return false;
 }
 
 /* =========================

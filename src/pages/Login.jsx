@@ -17,21 +17,22 @@ const Login = () => {
     setLoading(false);
 
     if (res.success) {
-      Swal.fire({
-        icon: 'success',
-        title: `ยินดีต้อนรับ ${res.user.name}`,
-        timer: 1500,
-        showConfirmButton: false
-      }).then(() => {
-        const role = res.user.role.toLowerCase().trim();
+  Swal.fire({
+    icon: 'success',
+    title: `ยินดีต้อนรับ ${res.user.name}`,
+    timer: 1500,
+    showConfirmButton: false
+  }).then(() => {
+    // ส่ง role ไปเช็คสิทธิ์ตรงๆ ไม่ต้องรออ่านจาก localStorage
+    const isAdmin = checkAdminAccess(res.user.role);
 
-        if (role === 'admin' || role === 'sadmin') {
-          navigate('/admin');
-        } else {
-          navigate('/user');
-        }
-      });
+    if (isAdmin) {
+      navigate('/admin'); // ถ้าเป็น admin หรือ sadmin ไปหน้านี้
     } else {
+      navigate('/user');  // ถ้าเป็นสิทธิ์อื่นๆ (user) ไปหน้านี้
+    }
+  });
+} else {
       Swal.fire({
         icon: 'error',
         title: 'เข้าสู่ระบบไม่สำเร็จ',
