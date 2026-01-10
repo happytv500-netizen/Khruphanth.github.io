@@ -1,115 +1,91 @@
-import React, { useState, useEffect } from "react";
-import Swal from "sweetalert2";
-import { fetchSheetData, postAction } from "../services/api";
-import { SHEET_NAMES } from "../config/config";
+import { useEffect, useState } from "react";
+import { fetchScriptData, postAction } from "../services/api";
 import { AuthService } from "../services/auth";
+import { SHEET_NAMES } from "../config/config";
 
-const Report = () => {
-  const [rawData, setRawData] = useState([]);
-  const [displayData, setDisplayData] = useState([]);
-  const [filters, setFilters] = useState({ search: "", status: "" });
-  const [hasSearched, setHasSearched] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null);
-
+export default function Report() {
+  // 🔐 กันคนไม่ login
   useEffect(() => {
-    setCurrentUser(AuthService.getCurrentUser());
-
-    const load = async () => {
-      const rows = await fetchSheetData(SHEET_NAMES.SHOW || "SHOW");
-      setRawData(rows.length > 1 ? rows.slice(1) : []);
-    };
-    load();
+    AuthService.requireAuth();
   }, []);
 
-  const handleSearch = () => {
-    setHasSearched(true);
-    if (!Array.isArray(rawData)) return;
-    let filtered = rawData.map((r, i) => ({
-      code: r[1],
-      name: r[2],
-      location: r[3],
-      status: r[4],
-      note: r[5]
-    }));
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-    const s = filters.search.toLowerCase();
-    if (s) {
-      filtered = filtered.filter(
-        x =>
-          String(x.code).toLowerCase().includes(s) ||
-          String(x.name).toLowerCase().includes(s)
-      );
-    }
-
-    if (filters.status) {
-      filtered = filtered.filter(x => x.status === filters.status);
-    }
-
-    setDisplayData(filtered);
+  // ================= โหลดข้อมูล =================
+  const loadReport = async () => {
+    setLoading(true);
+    const data = await fetchScriptData(SHEET_NAMES.REPORT || "REPORT");
+    setRows(Array.isArray(data) ? data : []);
+    setLoading(false);
   };
 
-  // 🔥 EXPORT จุดสำคัญ
-  const handleExport = async (format) => {
-    if (!displayData.length) {
-      Swal.fire("ไม่มีข้อมูล", "กรุณาค้นหาก่อน", "warning");
-      return;
-    }
+  useEffect(() => {
+    loadReport();
+  }, []);
 
-    // ✅ แปลงเป็น string ล้วนที่ React
-    const rowsForDoc = displayData.map((d, i) => ({
-      "ลำดับ": String(i + 1),
-      "รหัส": String(d.code ?? "-"),
-      "ชื่อ": String(d.name ?? "-"),
-      "สถานะ": String(d.status ?? "-"),
-      "สถานที่": String(d.location ?? "-"),
-      "หมายเหตุ": String(d.note ?? "-")
-    }));
+  // ================= ลบรายการ =================
+  const handleDelete = async (id) => {
+    if (!window.confirm("ลบรายการนี้?")) return;
 
-    Swal.fire({
-      title: "กำลังสร้างไฟล์...",
-      allowOutsideClick: false,
-      didOpen: () => Swal.showLoading()
-    });
+    const res = await postAction(
+      SHEET_NAMES.REPORT || "REPORT",
+      "delete",
+      { id }
+    );
 
-    try {
-      const res = await postAction(
-        "SHOW",
-        "createDoc",
-        {
-          format,
-          name: "รายงานครุภัณฑ์",
-          rows: JSON.stringify(rowsForDoc)
-        }
-      );
-
-      if (!res?.ok) throw new Error(res?.message || "สร้างไฟล์ไม่สำเร็จ");
-
-      const base64 = res.fileData.replace(/-/g, "+").replace(/_/g, "/");
-      const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-      const blob = new Blob([bytes], { type: "application/octet-stream" });
-
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = res.fileName;
-      a.click();
-
-      Swal.fire("สำเร็จ", "ดาวน์โหลดแล้ว", "success");
-    } catch (err) {
-      Swal.fire("ผิดพลาด", err.message, "error");ป
+    if (res.status === "success") {
+      loadReport();
+    } else {
+      alert("ลบไม่สำเร็จ");
     }
   };
 
+  // ================= UI =================
   return (
-    <>
-      {/* ปุ่ม */}
-      {hasSearched && (
-        <>
-          <button onClick={() => handleExport("pdf")}>PDF</button>
-          <button onClick={() => handleExport("doc")}>Word</button>
-        </>
-      )}
-    </>
-  );
-};
+    <div className="page">
+      <h2>📄 รายงาน</h2>
 
-export default Report;
+      {loading ? (
+        <p>กำลังโหลดข้อมูล...</p>
+      ) : (
+        <table className="table">
+          <thead>
+            <tr>
+              <th>รหัส</th>
+              <th>ชื่อ</th>
+              <th>รายละเอียด</th>
+              <th>วันที่</th>
+              <th>จัดการ</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan="5" align="center">ไม่มีข้อมูล</td>
+              </tr>
+            )}
+
+            {rows.map((r, i) => (
+              <tr key={i}>
+                <td>{r.id}</td>
+                <td>{r.name}</td>
+                <td>{r.detail}</td>
+                <td>{r.date}</td>
+                <td>
+                  <button
+                    className="btn btn-danger"
+                    onClick={() => handleDelete(r.id)}
+                  >
+                    ลบ
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
