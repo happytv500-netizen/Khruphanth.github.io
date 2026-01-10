@@ -25,7 +25,7 @@ const Login = () => {
       }).then(() => {
         const userRole = res.user.role.trim();
         
-        if (userRole === 'admin') {
+        if (userRole === 'admin' || userRole === 'sadmin') {
           navigate('/admin');
         } else {
           if (userRole === 'sadmin') {
