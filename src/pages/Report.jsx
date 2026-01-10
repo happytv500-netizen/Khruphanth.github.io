@@ -23,7 +23,7 @@ const Report = () => {
 
   const handleSearch = () => {
     setHasSearched(true);
-
+    if (!Array.isArray(rawData)) return;
     let filtered = rawData.map((r, i) => ({
       code: r[1],
       name: r[2],
@@ -95,7 +95,7 @@ const Report = () => {
 
       Swal.fire("สำเร็จ", "ดาวน์โหลดแล้ว", "success");
     } catch (err) {
-      Swal.fire("ผิดพลาด", err.message, "error");
+      Swal.fire("ผิดพลาด", err.message, "error");ป
     }
   };
 
