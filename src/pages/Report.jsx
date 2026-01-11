@@ -16,19 +16,25 @@ const Report = () => {
 
   useEffect(() => { loadInitialData(); }, []);
 
-  // ระบบ Filter ที่แก้ปัญหาเรื่องช่องว่าง (Trim)
   useEffect(() => {
     const filtered = data.filter(item => {
-      const sTerm = searchTerm.toLowerCase().trim();
-      const itemStatus = String(item["สถานะ"] || "").trim();
-      const itemLoc = String(item["ที่เก็บ"] || "").trim();
-      const itemCat = String(item["หมวดหมู่"] || "").trim();
+      // ใช้ฟังก์ชันช่วยหาค่าจากคอลัมน์เพื่อกันชื่อไม่ตรง
+      const getValue = (keys) => {
+        const foundKey = Object.keys(item).find(k => keys.includes(k.trim()));
+        return String(item[foundKey] || "").trim();
+      };
+
+      const name = getValue(["ชื่อครุภัณฑ์", "รายการ"]);
+      const code = getValue(["รหัสครุภัณฑ์", "รหัส"]);
+      const status = getValue(["สถานะ"]);
+      const location = getValue(["ที่เก็บ", "สถานที่เก็บ"]);
+      const category = getValue(["หมวดหมู่", "หมวด"]);
 
       return (
-        (sTerm === "" || String(item["ชื่อครุภัณฑ์"]).toLowerCase().includes(sTerm) || String(item["รหัสครุภัณฑ์"]).includes(sTerm)) &&
-        (filterStatus === "" || itemStatus === filterStatus) &&
-        (filterLocation === "" || itemLoc === filterLocation) &&
-        (filterCategory === "" || itemCat === filterCategory)
+        (searchTerm === "" || name.toLowerCase().includes(searchTerm.toLowerCase()) || code.includes(searchTerm)) &&
+        (filterStatus === "" || status === filterStatus) &&
+        (filterLocation === "" || location === filterLocation) &&
+        (filterCategory === "" || category === filterCategory)
       );
     });
     setFilteredData(filtered);
@@ -37,122 +43,115 @@ const Report = () => {
   const loadInitialData = async () => {
     setLoading(true);
     try {
-      const resData = await fetchScriptData("DATA"); // ดึงจากชีท DATA
-      const resLogin = await fetchScriptData("LOGIN"); // ดึงจากชีท LOGIN
+      const [resData, resLogin] = await Promise.all([
+        fetchScriptData("DATA"),
+        fetchScriptData("LOGIN")
+      ]);
 
       if (Array.isArray(resData)) {
+        // ล้างข้อมูล #N/A และแถวว่างออกทันที
         const clean = resData.filter(row => {
-          const id = String(row["รหัสครุภัณฑ์"] || "");
-          return id && !id.includes("#") && id !== "รหัสครุภัณฑ์";
+          const vals = Object.values(row).join("");
+          return vals && !vals.includes("#N/A") && row["รหัสครุภัณฑ์"];
         });
         setData(clean);
         setFilteredData(clean);
       }
       
-      // ดึงชื่อจากคอลัมน์ D (Name) ในชีท LOGIN
       if (Array.isArray(resLogin) && resLogin.length > 0) {
-        const user = resLogin.find(u => u["Name"]) || resLogin[0];
-        setUserName(user["Name"] || "ไม่ได้ระบุชื่อ");
+        // หาคอลัมน์ที่ชื่อ Name (D)
+        const userRow = resLogin.find(u => u["Name"] || u["name"]);
+        setUserName(userRow ? (userRow["Name"] || userRow["name"]) : "ผู้รับผิดชอบ");
       }
     } catch (err) { console.error(err); }
     setLoading(false);
   };
 
-  const loadFont = async () => {
-    const response = await fetch('/fonts/Sarabun-Regular.ttf');
-    const arrayBuffer = await response.arrayBuffer();
-    const bytes = new Uint8Array(arrayBuffer);
-    let binary = '';
-    for (let i = 0; i < bytes.byteLength; i++) { binary += String.fromCharCode(bytes[i]); }
-    return window.btoa(binary);
-  };
-
   const exportPDF = async () => {
     setLoading(true);
     try {
-      const fontBase64 = await loadFont();
+      const response = await fetch('/fonts/Sarabun-Regular.ttf');
+      const arrayBuffer = await response.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+      const fontBase64 = window.btoa(binary);
+
       const doc = new jsPDF('p', 'mm', 'a4');
       doc.addFileToVFS("Sarabun.ttf", fontBase64);
       doc.addFont("Sarabun.ttf", "Sarabun", "normal");
       doc.setFont("Sarabun");
 
-      // หัวรายงานพร้อมโลโก้ (เตรียมตำแหน่งไว้ให้)
-      // doc.addImage(logoBase64, 'PNG', 15, 10, 20, 20); 
-      doc.setFontSize(16);
-      doc.text("ใบรายงานสรุปข้อมูลครุภัณฑ์", 105, 18, { align: "center" });
-      doc.setFontSize(12);
-      doc.text("มหาวิทยาลัยเทคโนโลยีราชมงคลอีสาน วิทยาเขตขอนแก่น", 105, 25, { align: "center" });
-      doc.setFontSize(10);
-      doc.text(`วันที่ออกรายงาน: ${new Date().toLocaleDateString('th-TH')}`, 195, 32, { align: "right" });
+      // ส่วนหัวรายงาน
+      doc.setFontSize(18);
+      doc.text("ใบรายงานสรุปข้อมูลครุภัณฑ์", 105, 15, { align: "center" });
+      doc.setFontSize(11);
+      doc.text(`วันที่ออกรายงาน: ${new Date().toLocaleDateString('th-TH')}`, 195, 25, { align: "right" });
 
       autoTable(doc, {
-        startY: 38,
+        startY: 30,
         head: [['ลำดับ', 'รหัสครุภัณฑ์', 'รายการครุภัณฑ์', 'สถานที่เก็บ', 'สถานะ']],
         body: filteredData.map((item, idx) => [
           idx + 1, item["รหัสครุภัณฑ์"], item["ชื่อครุภัณฑ์"], item["ที่เก็บ"] || "-", item["สถานะ"] || "-"
         ]),
         styles: { font: "Sarabun", fontSize: 10 },
-        headStyles: { font: "Sarabun", fontStyle: 'normal', fillColor: [240, 240, 240], textColor: 0, halign: 'center' },
-        didDrawPage: (d) => {
-          doc.setFontSize(8);
-          doc.text(`หน้า ${doc.internal.getNumberOfPages()}`, 190, 285, { align: 'right' });
-        }
+        headStyles: { font: "Sarabun", fontStyle: 'normal', fillColor: [240, 240, 240], textColor: 0, halign: 'center' }
       });
 
-      // ส่วนลงชื่อท้ายรายงาน ดึงชื่อจาก LOGIN
       const finalY = doc.lastAutoTable.finalY + 20;
-      doc.setFontSize(12);
       doc.text("ลงชื่อ......................................................ผู้ออกรายงาน", 130, finalY);
       doc.text(`( ${userName} )`, 152, finalY + 8, { align: "center" });
 
       doc.save(`Report_${Date.now()}.pdf`);
-    } catch (e) { alert("เกิดข้อผิดพลาดในการสร้าง PDF"); }
+    } catch (e) { alert("Error: ไม่พบไฟล์ฟอนต์ใน public/fonts/"); }
     setLoading(false);
+  };
+
+  // ฟังก์ชันดึงรายการ Unique สำหรับ Dropdown
+  const getUniqueValues = (keyNames) => {
+    return [...new Set(data.map(item => {
+      const foundKey = Object.keys(item).find(k => keyNames.includes(k.trim()));
+      return String(item[foundKey] || "").trim();
+    }))].filter(v => v && v !== "undefined" && !v.includes("#"));
   };
 
   return (
     <div className="container mt-4">
-      <div className="card shadow-sm mb-4 p-3 bg-light">
+      <div className="card p-3 shadow-sm bg-light mb-4">
         <div className="row g-2">
           <div className="col-md-3">
-            <input type="text" className="form-control" placeholder="ค้นชื่อ/รหัส..." onChange={(e) => setSearchTerm(e.target.value)} />
+            <input type="text" className="form-control" placeholder="ค้นหา..." onChange={(e) => setSearchTerm(e.target.value)} />
           </div>
           <div className="col-md-2">
             <select className="form-select" onChange={(e) => setFilterCategory(e.target.value)}>
               <option value="">ทุกหมวดหมู่</option>
-              {[...new Set(data.map(item => String(item["หมวดหมู่"] || "").trim()))].filter(Boolean).map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
+              {getUniqueValues(["หมวดหมู่", "หมวด"]).map(v => <option key={v} value={v}>{v}</option>)}
             </select>
           </div>
           <div className="col-md-2">
             <select className="form-select" onChange={(e) => setFilterStatus(e.target.value)}>
               <option value="">ทุกสถานะ</option>
-              <option value="ปกติ">ปกติ</option>
-              <option value="ชำรุด">ชำรุด</option>
-              <option value="ใช้งานได้">ใช้งานได้</option>
+              {getUniqueValues(["สถานะ"]).map(v => <option key={v} value={v}>{v}</option>)}
             </select>
           </div>
           <div className="col-md-2">
             <select className="form-select" onChange={(e) => setFilterLocation(e.target.value)}>
               <option value="">ทุกที่เก็บ</option>
-              {[...new Set(data.map(item => String(item["ที่เก็บ"] || "").trim()))].filter(Boolean).map(loc => (
-                <option key={loc} value={loc}>{loc}</option>
-              ))}
+              {getUniqueValues(["ที่เก็บ", "สถานที่เก็บ"]).map(v => <option key={v} value={v}>{v}</option>)}
             </select>
           </div>
           <div className="col-md-3">
-            <button className="btn btn-primary w-100 fw-bold" onClick={exportPDF} disabled={loading}>
-              {loading ? 'กำลังโหลด...' : 'ดาวน์โหลด PDF รายงาน'}
+            <button className="btn btn-primary w-100" onClick={exportPDF} disabled={loading}>
+              {loading ? 'กำลังโหลด...' : 'ออกรายงาน PDF'}
             </button>
           </div>
         </div>
       </div>
 
-      <div className="table-responsive border rounded bg-white" style={{ maxHeight: '500px' }}>
-        <table className="table table-sm table-hover m-0">
-          <thead className="table-dark sticky-top">
-            <tr className="text-center"><th>#</th><th>รหัสครุภัณฑ์</th><th>ชื่อครุภัณฑ์</th><th>ที่เก็บ</th><th>สถานะ</th></tr>
+      <div className="table-responsive border" style={{ maxHeight: '500px' }}>
+        <table className="table table-sm table-hover bg-white">
+          <thead className="table-dark sticky-top text-center">
+            <tr><th>#</th><th>รหัส</th><th>ชื่อครุภัณฑ์</th><th>ที่เก็บ</th><th>สถานะ</th></tr>
           </thead>
           <tbody>
             {filteredData.map((row, idx) => (
