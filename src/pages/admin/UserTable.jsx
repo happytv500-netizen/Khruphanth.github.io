@@ -67,11 +67,9 @@ const UserTable = () => {
   };
 
   const handleBulkDelete = async () => {
-    // 1. ตรวจสอบก่อนว่ามีการเลือกกี่รายการ
     const count = selectedRows.size;
     const res = await Swal.fire({ 
-      title: `ยืนยันการลบ ${count} รายการ?`, 
-      text: "ระบบจะลบทีละแถวจากล่างขึ้นบนเพื่อป้องกันตำแหน่งคลาดเคลื่อน",
+      title: `ลบที่เลือก ${count} รายการ?`, 
       icon: 'warning', 
       showCancelButton: true 
     });
@@ -79,24 +77,19 @@ const UserTable = () => {
     if (res.isConfirmed) {
       Swal.fire({ title: 'กำลังลบ...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
-      // 2. แปลง Set เป็น Array และเรียงลำดับจาก "มากไปน้อย" (สำคัญมาก)
-      const sortedRows = Array.from(selectedRows).sort((a, b) => b - a);
-
       try {
-        // 3. วนลูปส่ง API ทีละตัว
-        for (const rowNum of sortedRows) {
-          await postAction("LOGIN", "delete", { 
-            action: "delete", 
-            row: rowNum  // ส่งเลขแถวที่แม่นยำที่สุด
-          });
-        }
+        // ส่ง Array ของ row ไปที่ action "bulkDelete" ครั้งเดียวจบ
+        await postAction("LOGIN", "bulkDelete", { 
+          action: "bulkDelete", 
+          sheet: "LOGIN",
+          rows: Array.from(selectedRows) 
+        });
 
-        Swal.fire('สำเร็จ', `ลบข้อมูล ${count} รายการเรียบร้อย`, 'success');
-        setSelectedRows(new Set()); // ล้างค่า Checkbox
-        loadUsers(); // โหลดข้อมูลใหม่
+        Swal.fire('สำเร็จ', '', 'success');
+        setSelectedRows(new Set());
+        loadUsers();
       } catch (err) {
-        console.error("Delete Error:", err);
-        Swal.fire('ผิดพลาด', 'ไม่สามารถลบข้อมูลบางรายการได้', 'error');
+        Swal.fire('ผิดพลาด', 'ลบไม่สำเร็จ', 'error');
       }
     }
   };
