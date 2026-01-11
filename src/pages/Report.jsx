@@ -1,91 +1,84 @@
-import { useEffect, useState } from "react";
-import { fetchScriptData, postAction } from "../services/api";
-import { AuthService } from "../services/auth";
-import { SHEET_NAMES } from "../config/config";
+import React, { useState, useEffect, useRef } from 'react';
+import { fetchScriptData } from '../services/api';
+import { SHEET_NAMES } from '../config/config';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
-export default function Report() {
-  // 🔐 กันคนไม่ login
+const Report = () => {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const reportRef = useRef();
+
   useEffect(() => {
-    AuthService.requireAuth();
+    loadData();
   }, []);
 
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  // ================= โหลดข้อมูล =================
-  const loadReport = async () => {
+  const loadData = async () => {
     setLoading(true);
-    const data = await fetchScriptData(SHEET_NAMES.REPORT || "REPORT");
-    setRows(Array.isArray(data) ? data : []);
+    // ดึงข้อมูลจาก sheet "SHOW" ตามภาพ
+    const res = await fetchScriptData("SHOW"); 
+    setData(res);
     setLoading(false);
   };
 
-  useEffect(() => {
-    loadReport();
-  }, []);
-
-  // ================= ลบรายการ =================
-  const handleDelete = async (id) => {
-    if (!window.confirm("ลบรายการนี้?")) return;
-
-    const res = await postAction(
-      SHEET_NAMES.REPORT || "REPORT",
-      "delete",
-      { id }
-    );
-
-    if (res.status === "success") {
-      loadReport();
-    } else {
-      alert("ลบไม่สำเร็จ");
-    }
+  const exportPDF = async () => {
+    setLoading(true);
+    const element = reportRef.current;
+    const canvas = await html2canvas(element, { scale: 2 });
+    const imgData = canvas.toDataURL('image/png');
+    
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+    
+    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+    pdf.save(`รายงานครุภัณฑ์_${Date.now()}.pdf`);
+    setLoading(false);
   };
 
-  // ================= UI =================
   return (
-    <div className="page">
-      <h2>📄 รายงาน</h2>
+    <div className="container mt-4">
+      <div className="d-flex justify-content-between align-items-center mb-4">
+        <h4><i className="bi bi-file-earmark-text me-2"></i>ออกรายงานครุภัณฑ์</h4>
+        <button className="btn btn-danger" onClick={exportPDF} disabled={loading || data.length === 0}>
+          {loading ? 'กำลังประมวลผล...' : 'ดาวน์โหลด PDF (A4)'}
+        </button>
+      </div>
 
-      {loading ? (
-        <p>กำลังโหลดข้อมูล...</p>
-      ) : (
-        <table className="table">
-          <thead>
+      {/* ส่วนที่ html2canvas จะจับภาพ */}
+      <div ref={reportRef} className="bg-white p-5 border" style={{ minWidth: '800px' }}>
+        <h3 className="text-center mb-4">รายงานสรุปข้อมูลครุภัณฑ์</h3>
+        <p className="text-end">วันที่ออกรายงาน: {new Date().toLocaleDateString('th-TH')}</p>
+        
+        <table className="table table-bordered border-dark">
+          <thead className="table-secondary text-center">
             <tr>
-              <th>รหัส</th>
-              <th>ชื่อ</th>
-              <th>รายละเอียด</th>
-              <th>วันที่</th>
-              <th>จัดการ</th>
+              <th style={{ width: '50px' }}>ลำดับ</th>
+              <th style={{ width: '150px' }}>รหัสครุภัณฑ์</th>
+              <th>ชื่อครุภัณฑ์</th>
+              <th style={{ width: '80px' }}>ที่เก็บ</th>
+              <th style={{ width: '100px' }}>สถานะ</th>
+              <th>รายละเอียดเพิ่มเติม</th>
             </tr>
           </thead>
-
           <tbody>
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan="5" align="center">ไม่มีข้อมูล</td>
+            {data.length > 0 ? data.map((row, index) => (
+              <tr key={index}>
+                <td className="text-center">{index + 1}</td>
+                <td>{row["รหัสครุภัณฑ์"] || ""}</td>
+                <td>{row["ชื่อครุภัณฑ์"] || ""}</td>
+                <td className="text-center">{row["ที่เก็บ"] || ""}</td>
+                <td className="text-center">{row["สถานะ"] || ""}</td>
+                <td>{row["รายละเอียดเพิ่มเติม"] || ""}</td>
               </tr>
+            )) : (
+              <tr><td colSpan="6" className="text-center">ไม่พบข้อมูล</td></tr>
             )}
-
-            {rows.map((r, i) => (
-              <tr key={i}>
-                <td>{r.id}</td>
-                <td>{r.name}</td>
-                <td>{r.detail}</td>
-                <td>{r.date}</td>
-                <td>
-                  <button
-                    className="btn btn-danger"
-                    onClick={() => handleDelete(r.id)}
-                  >
-                    ลบ
-                  </button>
-                </td>
-              </tr>
-            ))}
           </tbody>
         </table>
-      )}
+      </div>
     </div>
   );
-}
+};
+
+export default Report;
