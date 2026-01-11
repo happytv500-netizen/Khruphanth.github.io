@@ -3,8 +3,9 @@ import { fetchScriptData } from '../services/api';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-// นำรหัส Base64 จากลิงก์มาวางในเครื่องหมาย " " ห้ามมีช่องว่างหรือขึ้นบรรทัดใหม่
-const fontBase64 = "AAEAAA... (วางรหัสที่นี่) ...";
+// ห้ามมีช่องว่างในเครื่องหมาย " " และห้ามมี data:font/ttf;base64, นำหน้า
+// แนะนำให้ก๊อปใหม่จากลิงก์: https://raw.githubusercontent.com/id61023/thai-fonts-base64/master/THSarabunNew.txt
+const rawFontBase64 = "AAEAAA...(วางรหัสยาวๆ ที่นี่)...";
 
 const Report = () => {
   const [data, setData] = useState([]);
@@ -31,12 +32,14 @@ const Report = () => {
     try {
       const doc = new jsPDF('p', 'mm', 'a4');
 
-      // 1. ลงทะเบียนฟอนต์ไทย (ต้องสะอาด ไม่มีตัวอักษรนอก range Latin1)
-      doc.addFileToVFS("ThaiFont.ttf", fontBase64);
+      // ล้างค่า Base64 ให้สะอาด (ป้องกันตัวอักษรนอกเหนือจาก Latin1)
+      const cleanFont = rawFontBase64.replace(/\s/g, ''); 
+
+      doc.addFileToVFS("ThaiFont.ttf", cleanFont);
       doc.addFont("ThaiFont.ttf", "ThaiFont", "normal");
       doc.setFont("ThaiFont");
 
-      // 2. วาดหัวกระดาษ (แสดงเฉพาะหน้าแรก)
+      // หัวกระดาษ
       doc.setFontSize(18);
       doc.text("ใบรายงานสรุปข้อมูลครุภัณฑ์", 105, 15, { align: "center" });
       doc.setFontSize(12);
@@ -59,7 +62,6 @@ const Report = () => {
         status: item["สถานะ"]
       }));
 
-      // 3. วาดตาราง (ใช้ฟอนต์ไทย)
       autoTable(doc, {
         startY: 35,
         columns: columns,
@@ -76,27 +78,27 @@ const Report = () => {
       doc.save(`ใบรายงาน_${Date.now()}.pdf`);
     } catch (error) {
       console.error("PDF Export Error:", error);
-      alert("เกิดข้อผิดพลาดในการสร้าง PDF: " + error.message);
+      alert("Error: ตรวจสอบรหัสฟอนต์ว่าก๊อปปี้มาครบถ้วนหรือไม่");
     }
   };
 
   return (
     <div className="card shadow-sm p-4">
       <div className="d-flex justify-content-between align-items-center mb-4">
-        <h5 className="fw-bold">พรีวิวใบรายงาน</h5>
+        <h5 className="fw-bold">พรีวิวใบรายงาน (พบ {data.length} รายการ)</h5>
         <button className="btn btn-primary btn-lg" onClick={exportPDF} disabled={loading || !data.length}>
-          {loading ? 'กำลังโหลด...' : 'ดาวน์โหลด PDF (ไทย)'}
+          ดาวน์โหลด PDF (คมชัดสูง)
         </button>
       </div>
 
-      {/* ตารางแสดงตัวอย่างบนหน้าจอ */}
       <div className="table-responsive border" style={{ maxHeight: '600px' }}>
-        <table className="table table-hover m-0">
+        <table className="table table-hover table-bordered m-0">
           <thead className="table-secondary sticky-top">
             <tr>
               <th className="text-center">ลำดับ</th>
               <th>รหัสครุภัณฑ์</th>
               <th>ชื่อครุภัณฑ์</th>
+              <th className="text-center">สถานที่เก็บ</th>
               <th className="text-center">สถานะ</th>
             </tr>
           </thead>
@@ -106,6 +108,7 @@ const Report = () => {
                 <td className="text-center">{idx + 1}</td>
                 <td>{row["รหัสครุภัณฑ์"]}</td>
                 <td>{row["ชื่อครุภัณฑ์"]}</td>
+                <td className="text-center">{row["ที่เก็บ"]}</td>
                 <td className="text-center">
                   <span className={`badge ${row["สถานะ"] === 'ชำรุด' ? 'bg-danger' : 'bg-success'}`}>
                     {row["สถานะ"]}
