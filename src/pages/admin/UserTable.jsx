@@ -6,8 +6,7 @@ const UserTable = () => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedRows, setSelectedRows] = useState(new Set());
-  const loggedInUser = JSON.parse(localStorage.getItem('user')) || { role: 'admin' }; 
-
+  
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState('add');
   const [currentUser, setCurrentUser] = useState({ id: '', pass: '', name: '', role: 'user' });
@@ -16,7 +15,6 @@ const UserTable = () => {
     setLoading(true);
     try {
       const rows = await fetchSheetData("LOGIN");
-      // กรองและ Map ข้อมูล (ข้าม Header แถวที่ 1)
       const mapped = rows.slice(1)
         .filter(r => r[0] && String(r[0]).trim() !== "")
         .map((r, i) => ({ 
@@ -33,6 +31,16 @@ const UserTable = () => {
   };
 
   useEffect(() => { loadUsers(); }, []);
+
+  // ฟังก์ชันสลับการเลือกแถว
+  const toggleRow = (rowId) => {
+    setSelectedRows((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(rowId)) newSet.delete(rowId);
+      else newSet.add(rowId);
+      return new Set(newSet);
+    });
+  };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -63,11 +71,15 @@ const UserTable = () => {
     if (res.isConfirmed) {
       Swal.fire({ title: 'กำลังลบ...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
       const sortedRows = Array.from(selectedRows).sort((a, b) => b - a);
-      for (const row of sortedRows) {
-        await postAction("LOGIN", "delete", { action: "delete", row });
+      try {
+        for (const row of sortedRows) {
+          await postAction("LOGIN", "delete", { action: "delete", row });
+        }
+        Swal.fire('สำเร็จ', '', 'success');
+        loadUsers();
+      } catch (err) {
+        Swal.fire('ผิดพลาด', 'ลบไม่สำเร็จ', 'error');
       }
-      Swal.fire('สำเร็จ', '', 'success');
-      loadUsers();
     }
   };
 
@@ -95,14 +107,15 @@ const UserTable = () => {
           </thead>
           <tbody>
             {loading ? <tr><td colSpan="6" className="text-center p-4">กำลังโหลด...</td></tr> :
-             data.map((u, i) => (
-                <tr key={i} onClick={() => {
-                  const newSet = new Set(selectedRows);
-                  if (newSet.has(u.row)) newSet.delete(u.row); else newSet.add(u.row);
-                  setSelectedRows(newSet);
-                }}>
+             data.map((u) => (
+                <tr key={u.row} onClick={() => toggleRow(u.row)} style={{ cursor: 'pointer' }}>
                   <td onClick={e => e.stopPropagation()}>
-                    <input type="checkbox" className="form-check-input" checked={selectedRows.has(u.row)} readOnly />
+                    <input 
+                        type="checkbox" 
+                        className="form-check-input" 
+                        checked={selectedRows.has(u.row)} 
+                        onChange={() => toggleRow(u.row)} 
+                    />
                   </td>
                   <td className="fw-bold text-primary">{u.id}</td>
                   <td className="text-muted">{u.pass}</td>
