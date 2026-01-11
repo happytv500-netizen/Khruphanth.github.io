@@ -32,14 +32,40 @@ const Report = () => {
 
   const exportPDF = async () => {
     setLoading(true);
-    const element = reportRef.current;
-    const canvas = await html2canvas(element, { scale: 3 }); // เพิ่มความชัด
-    const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF('p', 'mm', 'a4');
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-    pdf.save(`Report_${Date.now()}.pdf`);
+    try {
+      const element = reportRef.current;
+      const canvas = await html2canvas(element, { 
+        scale: 2, 
+        useCORS: true,
+        logging: false
+      });
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.8);
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      
+      const imgWidth = 210; // ขนาดความกว้าง A4 (mm)
+      const pageHeight = 297; // ขนาดความสูง A4 (mm)
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      // --- หน้าที่ 1 ---
+      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      // --- ถ้าข้อมูลยาวกว่า 1 หน้า ให้ขึ้นหน้าใหม่และตัดแปะส่วนที่เหลือ ---
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      pdf.save(`Report_${Date.now()}.pdf`);
+    } catch (err) {
+      console.error("PDF Export Error:", err);
+      alert("ไม่สามารถสร้าง PDF ได้เนื่องจากข้อมูลยาวเกินไป");
+    }
     setLoading(false);
   };
 
