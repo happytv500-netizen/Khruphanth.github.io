@@ -67,35 +67,36 @@ const UserTable = () => {
   };
 
   const handleBulkDelete = async () => {
+    // 1. ตรวจสอบก่อนว่ามีการเลือกกี่รายการ
+    const count = selectedRows.size;
     const res = await Swal.fire({ 
-      title: `ลบที่เลือก ${selectedRows.size} รายการ?`, 
-      text: "การลบจากล่างขึ้นบนจะช่วยให้ตำแหน่งแถวไม่คลาดเคลื่อน",
+      title: `ยืนยันการลบ ${count} รายการ?`, 
+      text: "ระบบจะลบทีละแถวจากล่างขึ้นบนเพื่อป้องกันตำแหน่งคลาดเคลื่อน",
       icon: 'warning', 
       showCancelButton: true 
     });
 
     if (res.isConfirmed) {
-      Swal.fire({ 
-        title: 'กำลังลบ...', 
-        allowOutsideClick: false, 
-        didOpen: () => Swal.showLoading() 
-      });
+      Swal.fire({ title: 'กำลังลบ...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
-      // แก้ไขจุดนี้: เรียงจากแถวที่เลข "มาก" ไป "น้อย" (Descending Order)
+      // 2. แปลง Set เป็น Array และเรียงลำดับจาก "มากไปน้อย" (สำคัญมาก)
       const sortedRows = Array.from(selectedRows).sort((a, b) => b - a);
 
       try {
-        for (const row of sortedRows) {
-          // ส่งเลข row ที่ถูกต้องไปที่ API
-          await postAction("LOGIN", "delete", { action: "delete", row: row });
+        // 3. วนลูปส่ง API ทีละตัว
+        for (const rowNum of sortedRows) {
+          await postAction("LOGIN", "delete", { 
+            action: "delete", 
+            row: rowNum  // ส่งเลขแถวที่แม่นยำที่สุด
+          });
         }
-        
-        Swal.fire('สำเร็จ', `ลบทั้งหมด ${sortedRows.length} รายการแล้ว`, 'success');
-        setSelectedRows(new Set()); // ล้างค่าที่เลือกหลังลบเสร็จ
-        loadUsers();
+
+        Swal.fire('สำเร็จ', `ลบข้อมูล ${count} รายการเรียบร้อย`, 'success');
+        setSelectedRows(new Set()); // ล้างค่า Checkbox
+        loadUsers(); // โหลดข้อมูลใหม่
       } catch (err) {
-        console.error(err);
-        Swal.fire('ผิดพลาด', 'ลบไม่สำเร็จในบางรายการ', 'error');
+        console.error("Delete Error:", err);
+        Swal.fire('ผิดพลาด', 'ไม่สามารถลบข้อมูลบางรายการได้', 'error');
       }
     }
   };
