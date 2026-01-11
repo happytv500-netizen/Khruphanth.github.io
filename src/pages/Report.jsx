@@ -1,12 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { fetchScriptData } from '../services/api'; 
+import React, { useState, useEffect } from 'react';
+import { fetchScriptData } from '../services/api';
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import 'jspdf-autotable';
 
 const Report = () => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
-  const reportRef = useRef();
 
   useEffect(() => {
     loadData();
@@ -15,9 +14,9 @@ const Report = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const res = await fetchScriptData("SHOW"); 
+      const res = await fetchScriptData("SHOW");
       if (Array.isArray(res)) {
-        // กรองค่า Error ออกจากระบบ
+        // กรองค่า Error #N/A หรือแถวว่างออก [cite: 112, 129]
         const cleanData = res.filter(row => {
           const id = String(row["รหัสครุภัณฑ์"] || "");
           return id && id !== "รหัสครุภัณฑ์" && !id.includes("#");
@@ -30,107 +29,98 @@ const Report = () => {
     setLoading(false);
   };
 
-  const exportPDF = async () => {
-    setLoading(true);
-    try {
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const itemsPerPage = 18; // กำหนดจำนวนแถวต่อหน้า (ปรับตัวเลขนี้เพื่อให้พอดีกับท้ายกระดาษ)
-      const totalPages = Math.ceil(data.length / itemsPerPage);
+  const exportPDF = () => {
+    const doc = new jsPDF('p', 'mm', 'a4');
 
-      for (let i = 0; i < totalPages; i++) {
-        // สร้างข้อมูลเฉพาะส่วนของหน้านั้นๆ
-        const start = i * itemsPerPage;
-        const end = start + itemsPerPage;
-        const pageItems = data.slice(start, end);
+    // กำหนดค่าหัวกระดาษ 
+    const university = "มหาวิทยาลัยเทคโนโลยีราชมงคลอีสาน วิทยาเขตขอนแก่น";
+    const faculty = "คณะครุศาสตร์อุตสาหกรรม";
+    const department = "สาขาเทคนิคครุศาสตร์อุตสาหกรรม คอมพิวเตอร์";
+    const reportTitle = "ใบรายงานสรุปข้อมูลครุภัณฑ์";
 
-        // สร้าง Element ชั่วคราวสำหรับแต่ละหน้าเพื่อความคมชัดและเส้นตารางไม่หาย
-        const pageElement = document.createElement('div');
-        pageElement.style.width = '210mm';
-        pageElement.style.padding = '20mm';
-        pageElement.style.background = 'white';
-        pageElement.innerHTML = renderPageHTML(pageItems, i + 1, totalPages, start);
-        
-        document.body.appendChild(pageElement);
-        
-        const canvas = await html2canvas(pageElement, { 
-          scale: 2,
-          useCORS: true,
-          logging: false 
-        });
-        
-        const imgData = canvas.toDataURL('image/jpeg', 1.0);
-        
-        if (i > 0) pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297);
-        
-        document.body.removeChild(pageElement);
+    // วาดหัวกระดาษ (จะปรากฏเฉพาะหน้าแรก)
+    doc.setFontSize(16);
+    doc.text(reportTitle, 105, 15, { align: "center" });
+    doc.setFontSize(12);
+    doc.text(university, 105, 22, { align: "center" });
+    doc.text(`${faculty} / ${department}`, 105, 28, { align: "center" });
+    doc.setLineWidth(0.5);
+    doc.line(80, 32, 130, 32); // เส้นคั่นกลาง
+
+    // ข้อมูลประกอบอื่นๆ [cite: 104]
+    doc.setFontSize(10);
+    doc.text(`หน่วยงาน: ${department}`, 15, 42);
+    doc.text(`วันที่ออกเอกสาร: ${new Date().toLocaleDateString('th-TH')}`, 195, 42, { align: "right" });
+
+    // เตรียม Column และ Body สำหรับ AutoTable [cite: 106, 172]
+    const columns = [
+      { header: 'ลำดับ', dataKey: 'index' },
+      { header: 'รหัสครุภัณฑ์', dataKey: 'code' },
+      { header: 'รายการ / ชื่อครุภัณฑ์', dataKey: 'name' },
+      { header: 'สถานที่เก็บ', dataKey: 'location' },
+      { header: 'สถานะ', dataKey: 'status' },
+      { header: 'หมายเหตุ', dataKey: 'note' },
+    ];
+
+    const rows = data.map((item, idx) => ({
+      index: idx + 1,
+      code: item["รหัสครุภัณฑ์"],
+      name: item["ชื่อครุภัณฑ์"],
+      location: item["ที่เก็บ"],
+      status: item["สถานะ"],
+      note: item["รายละเอียดเพิ่มเติม"]
+    }));
+
+    // วาดตาราง [cite: 177]
+    doc.autoTable({
+      startY: 48,
+      columns: columns,
+      body: rows,
+      theme: 'grid',
+      headStyles: { fillColor: [240, 240, 240], textColor: 0, halign: 'center', lineWidth: 0.1 },
+      styles: { fontSize: 10, cellPadding: 2 },
+      columnStyles: {
+        index: { halign: 'center', cellWidth: 12 },
+        code: { cellWidth: 40 },
+        location: { halign: 'center', cellWidth: 20 },
+        status: { halign: 'center', cellWidth: 20 },
+      },
+      // แสดงหัวตารางซ้ำทุกหน้าอัตโนมัติ
+      didDrawPage: (data) => {
+        // ใส่เลขหน้ามุมล่างขวา [cite: 105, 178]
+        doc.setFontSize(8);
+        doc.text(`หน้า ${doc.internal.getNumberOfPages()}`, 195, 285, { align: "right" });
       }
+    });
 
-      pdf.save(`ใบรายงานครุภัณฑ์_${new Date().getTime()}.pdf`);
-    } catch (err) {
-      console.error("PDF Export Error:", err);
+    // ส่วนลงนาม (วาดต่อจากตารางในหน้าสุดท้าย) [cite: 281, 284]
+    const finalY = doc.lastAutoTable.finalY + 15;
+    if (finalY < 250) { // เช็คว่าพื้นที่พอไหม ถ้าไม่พอจะขึ้นหน้าใหม่
+      doc.setFontSize(11);
+      doc.text("ลงชื่อ......................................................ผู้รายงาน", 130, finalY);
+      doc.text("(......................................................)", 130, finalY + 10);
+      doc.text("ตำแหน่ง......................................................", 130, finalY + 20);
     }
-    setLoading(false);
-  };
 
-  // ฟังก์ชันสร้างโครงสร้าง HTML สำหรับแต่ละหน้า (ใบรายงานทางการ)
-  const renderPageHTML = (items, pageNum, totalPages, startIndex) => {
-    const rows = items.map((row, index) => `
-      <tr>
-        <td style="border: 1px solid black; text-align: center; padding: 5px;">${startIndex + index + 1}</td>
-        <td style="border: 1px solid black; text-align: left; padding: 5px;">${row["รหัสครุภัณฑ์"] || ""}</td>
-        <td style="border: 1px solid black; text-align: left; padding: 5px;">${row["ชื่อครุภัณฑ์"] || ""}</td>
-        <td style="border: 1px solid black; text-align: center; padding: 5px;">${row["ที่เก็บ"] || ""}</td>
-        <td style="border: 1px solid black; text-align: center; padding: 5px;">${row["สถานะ"] || ""}</td>
-        <td style="border: 1px solid black; text-align: left; padding: 5px;">${row["รายละเอียดเพิ่มเติม"] || ""}</td>
-      </tr>
-    `).join('');
-
-    return `
-      <div style="font-family: 'Sarabun', sans-serif; color: black;">
-        <div style="text-align: center; margin-bottom: 20px;">
-          <h3 style="margin: 0;">ใบรายงานสรุปข้อมูลครุภัณฑ์</h3>
-          <p style="margin: 5px 0;">มหาวิทยาลัยเทคโนโลยีราชมงคลอีสาน วิทยาเขตขอนแก่น</p>
-          <p style="margin: 5px 0;">คณะครุศาสตร์อุตสาหกรรม | สาขาเทคนิคครุศาสตร์อุตสาหกรรม คอมพิวเตอร์</p>
-          <div style="border-bottom: 2px solid black; width: 100px; margin: 10px auto;"></div>
-        </div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 14px;">
-          <span>วันที่ออกเอกสาร: ${new Date().toLocaleDateString('th-TH')}</span>
-          <span>หน้า ${pageNum} จาก ${totalPages}</span>
-        </div>
-        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-          <thead>
-            <tr style="background-color: #eee;">
-              <th style="border: 1px solid black; padding: 8px;">ลำดับ</th>
-              <th style="border: 1px solid black; padding: 8px;">รหัสครุภัณฑ์</th>
-              <th style="border: 1px solid black; padding: 8px;">รายการ / ชื่อครุภัณฑ์</th>
-              <th style="border: 1px solid black; padding: 8px;">สถานที่เก็บ</th>
-              <th style="border: 1px solid black; padding: 8px;">สถานะ</th>
-              <th style="border: 1px solid black; padding: 8px;">หมายเหตุ</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows}
-          </tbody>
-        </table>
-        ${pageNum === totalPages ? `
-          <div style="margin-top: 30px; text-align: right; padding-right: 20px;">
-            <p style="margin-bottom: 40px;">ลงชื่อ......................................................ผู้รายงาน</p>
-            <p>(......................................................)</p>
-            <p>ตำแหน่ง......................................................</p>
-          </div>
-        ` : ''}
-      </div>
-    `;
+    doc.save(`ใบรายงานครุภัณฑ์_${Date.now()}.pdf`);
   };
 
   return (
-    <div className="card shadow-sm p-4 text-center">
-      <h5 className="mb-4">ออกใบรายงานครุภัณฑ์ (มทร.อีสาน)</h5>
-      <div className="alert alert-info">พบข้อมูลที่พร้อมออกรายงานทั้งหมด {data.length} รายการ</div>
-      <button className="btn btn-primary btn-lg" onClick={exportPDF} disabled={loading || data.length === 0}>
-        {loading ? 'กำลังสร้างไฟล์ PDF...' : 'ดาวน์โหลดใบรายงาน PDF'}
-      </button>
+    <div className="container mt-4 text-center">
+      <div className="card shadow-sm p-5">
+        <h4 className="mb-3">ออกใบรายงานระบบมหาวิทยาลัย</h4>
+        <p className="text-muted">ระบบจะจัดการแบ่งหน้าและจัดรูปแบบตารางให้อัตโนมัติ</p>
+        <div className="alert alert-secondary">
+          มีข้อมูลที่พร้อมพิมพ์ทั้งหมด <strong>{data.length}</strong> รายการ
+        </div>
+        <button 
+          className="btn btn-primary btn-lg" 
+          onClick={exportPDF} 
+          disabled={loading || data.length === 0}
+        >
+          {loading ? 'กำลังดึงข้อมูล...' : 'ดาวน์โหลด PDF (คมชัดสูง)'}
+        </button>
+      </div>
     </div>
   );
 };
