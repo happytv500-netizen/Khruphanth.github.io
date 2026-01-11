@@ -67,18 +67,35 @@ const UserTable = () => {
   };
 
   const handleBulkDelete = async () => {
-    const res = await Swal.fire({ title: `ลบที่เลือก ${selectedRows.size} รายการ?`, icon: 'warning', showCancelButton: true });
+    const res = await Swal.fire({ 
+      title: `ลบที่เลือก ${selectedRows.size} รายการ?`, 
+      text: "การลบจากล่างขึ้นบนจะช่วยให้ตำแหน่งแถวไม่คลาดเคลื่อน",
+      icon: 'warning', 
+      showCancelButton: true 
+    });
+
     if (res.isConfirmed) {
-      Swal.fire({ title: 'กำลังลบ...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+      Swal.fire({ 
+        title: 'กำลังลบ...', 
+        allowOutsideClick: false, 
+        didOpen: () => Swal.showLoading() 
+      });
+
+      // แก้ไขจุดนี้: เรียงจากแถวที่เลข "มาก" ไป "น้อย" (Descending Order)
       const sortedRows = Array.from(selectedRows).sort((a, b) => b - a);
+
       try {
         for (const row of sortedRows) {
-          await postAction("LOGIN", "delete", { action: "delete", row });
+          // ส่งเลข row ที่ถูกต้องไปที่ API
+          await postAction("LOGIN", "delete", { action: "delete", row: row });
         }
-        Swal.fire('สำเร็จ', '', 'success');
+        
+        Swal.fire('สำเร็จ', `ลบทั้งหมด ${sortedRows.length} รายการแล้ว`, 'success');
+        setSelectedRows(new Set()); // ล้างค่าที่เลือกหลังลบเสร็จ
         loadUsers();
       } catch (err) {
-        Swal.fire('ผิดพลาด', 'ลบไม่สำเร็จ', 'error');
+        console.error(err);
+        Swal.fire('ผิดพลาด', 'ลบไม่สำเร็จในบางรายการ', 'error');
       }
     }
   };
