@@ -3,10 +3,6 @@ import { fetchScriptData } from '../services/api';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-// ห้ามมีช่องว่างในเครื่องหมาย " " และห้ามมี data:font/ttf;base64, นำหน้า
-// แนะนำให้ก๊อปใหม่จากลิงก์: https://raw.githubusercontent.com/id61023/thai-fonts-base64/master/THSarabunNew.txt
-const rawFontBase64 = "https://fonts.google.com/specimen/Sarabun";
-
 const Report = () => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -28,29 +24,42 @@ const Report = () => {
     setLoading(false);
   };
 
-  const exportPDF = () => {
+  // ฟังก์ชันโหลดไฟล์ .ttf แล้วแปลงเป็น Base64 เพื่อให้ jsPDF ใช้งาน
+  const fetchFontAsBase64 = async (url) => {
+    const response = await fetch(url);
+    const arrayBuffer = await response.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return window.btoa(binary);
+  };
+
+  const exportPDF = async () => {
+    setLoading(true);
     try {
       const doc = new jsPDF('p', 'mm', 'a4');
 
-      // ล้างค่า Base64 ให้สะอาด (ป้องกันตัวอักษรนอกเหนือจาก Latin1)
-      const cleanFont = rawFontBase64.replace(/\s/g, ''); 
+      // 1. โหลดฟอนต์ Sarabun จากแหล่งออนไลน์ (GitHub ของ Google Fonts)
+      const fontUrl = 'https://raw.githubusercontent.com/google/fonts/master/ofl/sarabun/Sarabun-Regular.ttf';
+      const fontBase64 = await fetchFontAsBase64(fontUrl);
+      
+      // 2. ลงทะเบียนฟอนต์ในเอกสาร
+      doc.addFileToVFS("Sarabun.ttf", fontBase64);
+      doc.addFont("Sarabun.ttf", "Sarabun", "normal");
+      doc.setFont("Sarabun");
 
-      doc.addFileToVFS("ThaiFont.ttf", cleanFont);
-      doc.addFont("ThaiFont.ttf", "ThaiFont", "normal");
-      doc.setFont("ThaiFont");
-
-      // หัวกระดาษ
+      // 3. วาดหัวกระดาษ
       doc.setFontSize(18);
       doc.text("ใบรายงานสรุปข้อมูลครุภัณฑ์", 105, 15, { align: "center" });
       doc.setFontSize(12);
       doc.text("มหาวิทยาลัยเทคโนโลยีราชมงคลอีสาน วิทยาเขตขอนแก่น", 105, 22, { align: "center" });
-      doc.text("คณะครุศาสตร์อุตสาหกรรม / สาขาเทคนิคครุศาสตร์อุตสาหกรรม คอมพิวเตอร์", 105, 28, { align: "center" });
 
       const columns = [
         { header: 'ลำดับ', dataKey: 'index' },
         { header: 'รหัสครุภัณฑ์', dataKey: 'code' },
         { header: 'รายการ / ชื่อครุภัณฑ์', dataKey: 'name' },
-        { header: 'ที่เก็บ', dataKey: 'location' },
         { header: 'สถานะ', dataKey: 'status' }
       ];
 
@@ -58,19 +67,18 @@ const Report = () => {
         index: idx + 1,
         code: item["รหัสครุภัณฑ์"],
         name: item["ชื่อครุภัณฑ์"],
-        location: item["ที่เก็บ"],
         status: item["สถานะ"]
       }));
 
+      // 4. สร้างตารางโดยใช้ฟอนต์ที่โหลดมา
       autoTable(doc, {
-        startY: 35,
+        startY: 30,
         columns: columns,
         body: rows,
-        theme: 'grid',
-        styles: { font: "ThaiFont", fontSize: 11 },
-        headStyles: { fillColor: [240, 240, 240], textColor: 0, font: "ThaiFont" },
+        styles: { font: "Sarabun", fontSize: 10 },
+        headStyles: { fillColor: [240, 240, 240], textColor: 0, font: "Sarabun" },
         didDrawPage: (d) => {
-          doc.setFontSize(10);
+          doc.setFontSize(8);
           doc.text(`หน้า ${doc.internal.getNumberOfPages()}`, 190, 285, { align: 'right' });
         }
       });
@@ -78,47 +86,42 @@ const Report = () => {
       doc.save(`ใบรายงาน_${Date.now()}.pdf`);
     } catch (error) {
       console.error("PDF Export Error:", error);
-      alert("Error: ตรวจสอบรหัสฟอนต์ว่าก๊อปปี้มาครบถ้วนหรือไม่");
+      alert("ไม่สามารถสร้าง PDF ได้เนื่องจากปัญหาการโหลดฟอนต์");
     }
+    setLoading(false);
   };
 
   return (
-    <div className="card shadow-sm p-4">
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <h5 className="fw-bold">พรีวิวใบรายงาน (พบ {data.length} รายการ)</h5>
-        <button className="btn btn-primary btn-lg" onClick={exportPDF} disabled={loading || !data.length}>
-          ดาวน์โหลด PDF (คมชัดสูง)
-        </button>
-      </div>
-
-      <div className="table-responsive border" style={{ maxHeight: '600px' }}>
-        <table className="table table-hover table-bordered m-0">
-          <thead className="table-secondary sticky-top">
+    <div className="card shadow-sm p-4 text-center">
+      <h5 className="mb-4">ระบบออกใบรายงาน (โหลดฟอนต์ออนไลน์)</h5>
+      
+      {/* ตารางพรีวิวบนหน้าเว็บ */}
+      <div className="table-responsive mb-4 border" style={{ maxHeight: '450px' }}>
+        <table className="table table-hover m-0 small">
+          <thead className="table-light sticky-top">
             <tr>
-              <th className="text-center">ลำดับ</th>
+              <th>ลำดับ</th>
               <th>รหัสครุภัณฑ์</th>
               <th>ชื่อครุภัณฑ์</th>
-              <th className="text-center">สถานที่เก็บ</th>
-              <th className="text-center">สถานะ</th>
+              <th>สถานะ</th>
             </tr>
           </thead>
           <tbody>
             {data.map((row, idx) => (
               <tr key={idx}>
-                <td className="text-center">{idx + 1}</td>
+                <td>{idx + 1}</td>
                 <td>{row["รหัสครุภัณฑ์"]}</td>
                 <td>{row["ชื่อครุภัณฑ์"]}</td>
-                <td className="text-center">{row["ที่เก็บ"]}</td>
-                <td className="text-center">
-                  <span className={`badge ${row["สถานะ"] === 'ชำรุด' ? 'bg-danger' : 'bg-success'}`}>
-                    {row["สถานะ"]}
-                  </span>
-                </td>
+                <td>{row["สถานะ"]}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      <button className="btn btn-primary btn-lg w-100" onClick={exportPDF} disabled={loading || !data.length}>
+        {loading ? 'กำลังดาวน์โหลดฟอนต์...' : 'ดาวน์โหลด PDF (ไทย)'}
+      </button>
     </div>
   );
 };
