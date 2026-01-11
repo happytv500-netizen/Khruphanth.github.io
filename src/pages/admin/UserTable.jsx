@@ -78,22 +78,22 @@ const UserTable = () => {
       Swal.fire({ title: 'กำลังลบ...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
       try {
-        // ส่ง Array ของ row ไปที่ action "bulkDelete" ครั้งเดียวจบ
-        await postAction("LOGIN", "bulkDelete", { 
-          action: "bulkDelete", 
+        // ส่งข้อมูลไปลบในครั้งเดียว
+        await postAction("LOGIN", "delete", { 
+          action: "delete", 
           sheet: "LOGIN",
-          rows: Array.from(selectedRows) 
+          rows: Array.from(selectedRows) // ส่งเป็น Array ของเลขแถว
         });
 
         Swal.fire('สำเร็จ', '', 'success');
         setSelectedRows(new Set());
         loadUsers();
       } catch (err) {
+        console.error(err);
         Swal.fire('ผิดพลาด', 'ลบไม่สำเร็จ', 'error');
       }
     }
   };
-
   return (
     <div className="card border-0 shadow-sm rounded-4">
       <div className="card-header bg-white py-3 d-flex justify-content-between align-items-center">
