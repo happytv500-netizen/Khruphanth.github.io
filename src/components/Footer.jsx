@@ -24,9 +24,15 @@ const Footer = () => {
               ผู้จัดทำ
             </h5>
             <ul className="list-unstyled small text-white-50 mt-2">
-              <li><i className="bi bi-person-fill me-2"></i>นาย.......................... (รหัสนักศึกษา ......)</li>
-              <li><i className="bi bi-envelope-fill me-2"></i>email@example.com</li>
-              <li><i className="bi bi-telephone-fill me-2"></i>08x-xxxx-xxxx</li>
+              <li><i className="bi bi-person-fill me-2"></i>นายวชิรพงษ์ เงินบุตรโคตร (รหัสนักศึกษา 67322310068-0)</li>
+              <li><i className="bi bi-envelope-fill me-2"></i>wachirapong@rmuti.ac.th</li>
+              <li><i className="bi bi-telephone-fill me-2"></i>0956300542</li>
+              <li><i className="bi bi-person-fill me-2"></i>นายดนัย เนื่องมัจฉา (รหัสนักศึกษา 67322310069-0)</li>
+              <li><i className="bi bi-envelope-fill me-2"></i>danai.nu@rmuti.ac.th</li>
+              <li><i className="bi bi-telephone-fill me-2"></i>0864747327</li>
+              <li><i className="bi bi-person-fill me-2"></i>นายสิทธาทัศน์ สวัสดิ์วอ (รหัสนักศึกษา 67322310052-2)</li>
+              <li><i className="bi bi-envelope-fill me-2"></i>firstsitha@gmail.com</li>
+              <li><i className="bi bi-telephone-fill me-2"></i>080-4207856</li>
             </ul>
           </div>
         </div>
