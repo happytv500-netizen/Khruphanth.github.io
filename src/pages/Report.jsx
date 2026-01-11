@@ -4,114 +4,156 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 const Report = () => {
-  const [data, setData] = useState([]);
+  const [data, setData] = useState([]); // ข้อมูลต้นฉบับ
+  const [filteredData, setFilteredData] = useState([]); // ข้อมูลที่กรองแล้ว
+  const [userName, setUserName] = useState(""); // ชื่อจาก LOGIN
   const [loading, setLoading] = useState(false);
+  
+  // ตัวแปรสำหรับ Filter
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [filterLocation, setFilterLocation] = useState("");
+  const [filterCategory, setFilterCategory] = useState("");
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { 
+    loadInitialData(); 
+  }, []);
 
-  const loadData = async () => {
+  // กรองข้อมูลทุกครั้งที่ค่า Filter เปลี่ยน
+  useEffect(() => {
+    const filtered = data.filter(item => {
+      return (
+        (searchTerm === "" || String(item["ชื่อครุภัณฑ์"]).includes(searchTerm) || String(item["รหัสครุภัณฑ์"]).includes(searchTerm)) &&
+        (filterStatus === "" || item["สถานะ"] === filterStatus) &&
+        (filterLocation === "" || item["ที่เก็บ"] === filterLocation) &&
+        (filterCategory === "" || item["หมวดหมู่"] === filterCategory)
+      );
+    });
+    setFilteredData(filtered);
+  }, [searchTerm, filterStatus, filterLocation, filterCategory, data]);
+
+  const loadInitialData = async () => {
     setLoading(true);
     try {
-      const res = await fetchScriptData("SHOW");
-      if (Array.isArray(res)) {
-        // กรองข้อมูลขยะและค่า #N/A ออกให้หมด
-        const cleanData = res.filter(row => {
-          const id = String(row["รหัสครุภัณฑ์"] || "");
-          const name = String(row["ชื่อครุภัณฑ์"] || "");
-          return id && id !== "รหัสครุภัณฑ์" && !id.includes("#") && !name.includes("#");
-        });
-        setData(cleanData);
+      const resData = await fetchScriptData("DATA"); // ดึงจากชีท DATA เพื่อเอาหมวดหมู่
+      const resLogin = await fetchScriptData("LOGIN"); // ดึงชื่อผู้ใช้
+
+      if (Array.isArray(resData)) {
+        const clean = resData.filter(row => row["รหัสครุภัณฑ์"] && !String(row["รหัสครุภัณฑ์"]).includes("#"));
+        setData(clean);
+        setFilteredData(clean);
+      }
+      
+      if (Array.isArray(resLogin) && resLogin.length > 0) {
+        setUserName(resLogin[0]["Name"] || "ไม่ได้ระบุชื่อ"); // ดึงคอลัมน์ D=Name
       }
     } catch (err) { console.error(err); }
     setLoading(false);
   };
 
   const loadFont = async () => {
-    try {
-      const response = await fetch('/fonts/Sarabun-Regular.ttf');
-      if (!response.ok) throw new Error("File not found");
-      const arrayBuffer = await response.arrayBuffer();
-      const bytes = new Uint8Array(arrayBuffer);
-      let binary = '';
-      for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i]);
-      }
-      return window.btoa(binary);
-    } catch (e) {
-      console.error("Font loading failed", e);
-      return null;
-    }
+    const response = await fetch('/fonts/Sarabun-Regular.ttf');
+    const arrayBuffer = await response.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) { binary += String.fromCharCode(bytes[i]); }
+    return window.btoa(binary);
   };
 
   const exportPDF = async () => {
     setLoading(true);
     const fontBase64 = await loadFont();
-    
-    if (!fontBase64) {
-      alert("ไม่พบไฟล์ฟอนต์ใน public/fonts/Sarabun-Regular.ttf");
-      setLoading(false);
-      return;
-    }
+    const doc = new jsPDF('p', 'mm', 'a4');
 
-    try {
-      const doc = new jsPDF('p', 'mm', 'a4');
+    doc.addFileToVFS("Sarabun.ttf", fontBase64);
+    doc.addFont("Sarabun.ttf", "Sarabun", "normal");
+    doc.setFont("Sarabun");
 
-      // 1. ลงทะเบียนฟอนต์และตั้งค่าเป็น Default ของทั้งเอกสาร
-      doc.addFileToVFS("Sarabun.ttf", fontBase64);
-      doc.addFont("Sarabun.ttf", "Sarabun", "normal");
-      doc.setFont("Sarabun"); // บังคับใช้ฟอนต์นี้ทันที
+    // --- ส่วนหัวรายงาน ---
+    // doc.addImage(logoBase64, 'PNG', 15, 10, 20, 25); // เปิดใช้ถ้ามี Base64 โลโก้
+    doc.setFontSize(16);
+    doc.text("ใบรายงานสรุปข้อมูลครุภัณฑ์", 105, 15, { align: "center" });
+    doc.setFontSize(12);
+    doc.text("มหาวิทยาลัยเทคโนโลยีราชมงคลอีสาน วิทยาเขตขอนแก่น", 105, 22, { align: "center" });
+    doc.setFontSize(10);
+    doc.text(`วันที่ออกรายงาน: ${new Date().toLocaleDateString('th-TH')}`, 195, 28, { align: "right" });
 
-      // 2. พิมพ์หัวข้อกระดาษ
-      doc.setFontSize(18);
-      doc.text("ใบรายงานสรุปข้อมูลครุภัณฑ์", 105, 15, { align: "center" });
-      doc.setFontSize(12);
-      doc.text("มหาวิทยาลัยเทคโนโลยีราชมงคลอีสาน วิทยาเขตขอนแก่น", 105, 22, { align: "center" });
+    autoTable(doc, {
+      startY: 35,
+      head: [['ลำดับ', 'รหัสครุภัณฑ์', 'รายการครุภัณฑ์', 'หมวดหมู่', 'สถานะ']],
+      body: filteredData.map((item, idx) => [
+        idx + 1, item["รหัสครุภัณฑ์"], item["ชื่อครุภัณฑ์"], item["หมวดหมู่"], item["สถานะ"]
+      ]),
+      styles: { font: "Sarabun", fontSize: 10 },
+      headStyles: { font: "Sarabun", fontStyle: 'normal', fillColor: [240, 240, 240], textColor: 0, halign: 'center' },
+      didDrawPage: (d) => {
+        doc.setFontSize(8);
+        doc.text(`หน้า ${doc.internal.getNumberOfPages()}`, 190, 285, { align: 'right' });
+      }
+    });
 
-      // 3. วาดตารางโดยใช้ฟังก์ชัน autoTable (วิธีนี้ชัวร์ที่สุด)
-      autoTable(doc, {
-        startY: 30,
-        head: [['ลำดับ', 'รหัสครุภัณฑ์', 'รายการครุภัณฑ์', 'สถานที่เก็บ', 'สถานะ']],
-        body: data.map((item, idx) => [
-          idx + 1,
-          item["รหัสครุภัณฑ์"],
-          item["ชื่อครุภัณฑ์"],
-          item["ที่เก็บ"] || "-",
-          item["สถานะ"] || "ปกติ"
-        ]),
-        // บังคับฟอนต์ "Sarabun" ในทุกส่วนของตาราง
-        styles: { 
-          font: "Sarabun", 
-          fontSize: 10,
-          halign: 'left'
-        },
-        headStyles: { 
-          font: "Sarabun", // บังคับฟอนต์ที่หัวตาราง
-          fontStyle: 'normal', // ป้องกันมันเปลี่ยนเป็น Bold แล้วหาฟอนต์ไม่เจอ
-          fillColor: [240, 240, 240], 
-          textColor: 0,
-          halign: 'center'
-        },
-        theme: 'grid',
-        didDrawPage: (d) => {
-          doc.setFontSize(8);
-          doc.text(`หน้า ${doc.internal.getNumberOfPages()}`, 190, 285, { align: 'right' });
-        }
-      });
+    // --- ส่วนลงชื่อท้ายรายงาน ---
+    const finalY = doc.lastAutoTable.finalY + 20;
+    doc.setFontSize(12);
+    doc.text("ลงชื่อ......................................................ผู้ออกรายงาน", 130, finalY);
+    doc.text(`( ${userName} )`, 152, finalY + 8, { align: "center" });
 
-      doc.save(`Report_${Date.now()}.pdf`);
-    } catch (error) {
-      console.error(error);
-      alert("เกิดข้อผิดพลาดในการสร้าง PDF");
-    }
+    doc.save(`Report_${Date.now()}.pdf`);
     setLoading(false);
   };
 
   return (
-    <div className="p-5 text-center">
-      <h4 className="mb-4">ออกรายงานครุภัณฑ์ (คมชัดสูง)</h4>
-      <button className="btn btn-success btn-lg" onClick={exportPDF} disabled={loading || !data.length}>
-        {loading ? 'กำลังประมวลผลฟอนต์...' : 'ดาวน์โหลด PDF'}
-      </button>
+    <div className="container mt-4">
+      {/* ส่วน Filter ข้อมูล */}
+      <div className="card shadow-sm mb-4 p-3">
+        <div className="row g-2">
+          <div className="col-md-3">
+            <input type="text" className="form-control" placeholder="ค้นหาชื่อ/รหัส..." onChange={(e) => setSearchTerm(e.target.value)} />
+          </div>
+          <div className="col-md-3">
+            <select className="form-select" onChange={(e) => setFilterCategory(e.target.value)}>
+              <option value="">ทุกหมวดหมู่</option>
+              {[...new Set(data.map(item => item["หมวดหมู่"]))].map(cat => <option key={cat} value={cat}>{cat}</option>)}
+            </select>
+          </div>
+          <div className="col-md-2">
+            <select className="form-select" onChange={(e) => setFilterStatus(e.target.value)}>
+              <option value="">ทุกสถานะ</option>
+              <option value="ปกติ">ปกติ</option>
+              <option value="ชำรุด">ชำรุด</option>
+            </select>
+          </div>
+          <div className="col-md-2">
+            <select className="form-select" onChange={(e) => setFilterLocation(e.target.value)}>
+              <option value="">ทุกที่เก็บ</option>
+              {[...new Set(data.map(item => item["ที่เก็บ"]))].map(loc => <option key={loc} value={loc}>{loc}</option>)}
+            </select>
+          </div>
+          <div className="col-md-2">
+            <button className="btn btn-primary w-100" onClick={exportPDF} disabled={loading}>{loading ? '...' : 'ออก PDF'}</button>
+          </div>
+        </div>
+      </div>
+
+      {/* พรีวิวตาราง */}
+      <div className="table-responsive border" style={{ maxHeight: '500px' }}>
+        <table className="table table-sm table-hover">
+          <thead className="table-light sticky-top">
+            <tr className="text-center"><th>ลำดับ</th><th>รหัส</th><th>ชื่อ</th><th>หมวด</th><th>สถานะ</th></tr>
+          </thead>
+          <tbody>
+            {filteredData.map((row, idx) => (
+              <tr key={idx}>
+                <td className="text-center">{idx + 1}</td>
+                <td>{row["รหัสครุภัณฑ์"]}</td>
+                <td>{row["ชื่อครุภัณฑ์"]}</td>
+                <td className="text-center">{row["หมวดหมู่"]}</td>
+                <td className="text-center">{row["สถานะ"]}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };
